@@ -118,8 +118,16 @@ Inštalátor sa pýta v tomto poradí, potom už nikoho nepotrebuje:
 3. časové pásmo (predvolené `Europe/Bratislava`);
 4. Wi-Fi sieť a heslo (prázdne = bez Wi-Fi);
 5. Tailscale auth key (prázdne = prihlásiť neskôr ručne);
-6. ktorý disk, len keď má stroj viac diskov. Kľúč, z ktorého inštalátor beží, v zozname nie je;
-7. potvrdenie zápisu na disk. **Prepíše sa celý vybraný disk.** Predvolená odpoveď je „No“.
+6. kam inštalovať, keď je z čoho vyberať: každý disk ako celok (`ERASE the whole disk`) a, keď je na disku
+   s oddielmi aspoň 10 GB nepridelených, aj `only its N GB of free space`. Tá druhá voľba je prvá v zozname, berie
+   len najväčší súvislý nepridelený kus a existujúce oddiely nechá tak (napríklad Windows). Kľúč, z ktorého
+   inštalátor beží, v zozname nie je;
+7. potvrdenie zápisu na disk. Pri celom disku sa **prepíše celý vybraný disk** a v zozname sú oddiely #1 a #2;
+   pri voľnom mieste sú tam len nové oddiely s vyššími číslami. Predvolená odpoveď je „No“.
+
+Vedľa iného systému: miesto musí byť nepridelené (nie prázdny zväzok). Zavádzač ide do existujúceho EFI oddielu
+do priečinka `debian`, súbory druhého systému ostanú. Stroj potom štartuje do KarchiOS bez ponuky; druhý systém sa
+spúšťa zo štartovacej ponuky firmvéru.
 
 Na klávesnicu sa nepýta: je slovenská QWERTY už počas inštalácie (heslo sa teda píše tak isto ako potom na
 konzole; číslice sú so Shiftom) aj v nainštalovanom systéme. Zoznam inštalátora ponúka len slovenskú QWERTZ, preto

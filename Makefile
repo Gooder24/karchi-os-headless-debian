@@ -11,6 +11,7 @@ check: ## static checks and self-tests on the host (seconds)
 	for f in tools/*.sh tests/*.sh pkg/root/usr/bin/karchi-doctor pkg/root/usr/lib/karchi/* pkg/root/etc/profile.d/*; do bash -n $$f || exit 1; done
 	python3 -c 'import ast, sys; [ast.parse(open(f).read(), f) for f in sys.argv[1:]]' tools/vm.py
 	bash pkg/root/usr/lib/karchi/post-install --self-test
+	sh iso/questions --self-test
 	@unreadable=$$(find pkg/root ! -type l ! -perm -o=r); test -z "$$unreadable" || { echo "installed as-is, so users could not read: $$unreadable"; exit 1; }
 
 iso: check ## build the ISO into ~/.cache/karchi-os-headless-debian/out (first run downloads about 0.9 GB)

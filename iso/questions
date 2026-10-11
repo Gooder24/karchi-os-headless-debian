@@ -2,6 +2,39 @@
 # Our own questions (partman/early_command): asked right before partitioning, so that all questions come
 # first and the installation then needs nobody. An answer given on the kernel command line
 # (karchi/wifi-ssid=...) counts as seen and is not asked again.
+
+describe() {  # /dev/sda - 512 GB Samsung SSD 860
+  # shellcheck disable=SC2046  # unquoted on purpose: a model is padded with spaces
+  echo "$1 - $(($(cat "/sys/block/${1#/dev/}/size") / 1953125)) GB" \
+    $(cat "/sys/block/${1#/dev/}/device/model" 2> /dev/null | tr -d ,)
+}
+
+# The largest stretch of a disk that no partition covers, in GB: what the installer's "largest continuous free
+# space" takes. /sys counts in sectors of 512 bytes whatever the disk says; the first MiB is never given out.
+# ponytail: a free stretch inside an MBR extended partition is not seen; the machines this is for use GPT.
+free_gb() {
+  disk=${SYS:-/sys}/block/${1#/dev/}; end=2048; best=0
+  for part in $(for start in "$disk"/*/start; do
+      [ -e "$start" ] && echo "$(cat "$start"):$(cat "${start%start}size")"
+    done | sort -n) "$(cat "$disk/size"):0"; do
+    [ $((${part%:*} - end)) -gt "$best" ] && best=$((${part%:*} - end))
+    end=$((${part%:*} + ${part#*:}))
+  done
+  [ "$end" -gt 2048 ] || best=0  # no partition at all: nothing to keep, the whole disk is the choice
+  echo $((best / 2097152))  # in units of 2^30 bytes, which Windows' Disk Management calls GB: the numbers match
+}
+
+if [ "$1" = --self-test ]; then  # two partitions, 95 GB free, a third partition, 36 GB free
+  SYS=$(mktemp -d); mkdir -p "$SYS/block/x/x1" "$SYS/block/x/x2" "$SYS/block/x/x3" "$SYS/block/x/queue"
+  echo 976562500 > "$SYS/block/x/size"
+  echo 2048 > "$SYS/block/x/x1/start"; echo 204800 > "$SYS/block/x/x1/size"
+  echo 800000000 > "$SYS/block/x/x3/start"; echo 100000000 > "$SYS/block/x/x3/size"
+  echo 206848 > "$SYS/block/x/x2/start"; echo 600000000 > "$SYS/block/x/x2/size"
+  got=$(free_gb /dev/x); rm -r "$SYS"
+  [ "$got" = 95 ] || { echo "free_gb: $got instead of 95" >&2; exit 1; }
+  exit 0
+fi
+
 . /usr/share/debconf/confmodule
 db_x_loadtemplatefile /cdrom/karchi/templates karchi
 db_settitle karchi/title
@@ -17,16 +50,11 @@ fi
 db_input high karchi/tailscale-key || true
 db_go || true
 
-# Which disk. The installer's own list offers the USB stick it was started from, and puts it first: under
+# Where to. The installer's own list offers the USB stick it was started from, and puts it first: under
 # Ventoy /cdrom is a device-mapper device on a partition of the stick, under a made-up name. Here the medium
-# is found by its device number and left out. With one disk left there is nothing to ask; "write the changes
-# to disks?" still comes.
-describe() {  # /dev/sda - 512 GB Samsung SSD 860
-  # shellcheck disable=SC2046  # unquoted on purpose: a model is padded with spaces
-  echo "$1 - $(($(cat "/sys/block/${1#/dev/}/size") / 1953125)) GB" \
-    $(cat "/sys/block/${1#/dev/}/device/model" 2> /dev/null | tr -d ,)
-}
-
+# is found by its device number and left out. Free space is offered first, with its size, when the largest
+# free stretch of all disks is at least 10 GB and not on the medium: that stretch is the one the installer
+# then takes. With one choice there is nothing to ask; "write the changes to disks?" still comes.
 db_get partman-auto/disk
 if [ -z "$RET" ]; then
   medium=
@@ -35,13 +63,22 @@ if [ -z "$RET" ]; then
     medium="$(basename "$(readlink -f "/sys/dev/block/$number")") $(ls "/sys/dev/block/$number/slaves" 2> /dev/null)"
   done < /proc/self/mountinfo
   choices=
+  free=0
+  free_on=
   for device in $(list-devices disk); do
+    gb=$(free_gb "$device")
+    [ "$gb" -gt "$free" ] && { free=$gb; free_on=$device; }
     for part in $medium; do
       if [ "/dev/$part" = "$device" ] || [ -e "/sys/block/${device#/dev/}/$part" ]; then continue 2; fi
     done
-    choices="${choices:+$choices, }$(describe "$device")"
+    choices="${choices:+$choices, }$(describe "$device") - ERASE the whole disk"
   done
-  logger -t karchi "medium: $medium; disks to choose from: $choices"
+  case ", $choices" in
+    *", $free_on - "*)
+      [ "$free" -ge 10 ] && choices="$free_on - only its $free GB of free space - what is on the disk stays, $choices"
+      ;;
+  esac
+  logger -t karchi "medium: $medium; to choose from: $choices"
   case $choices in
     '') ;;  # no disk at all: the installer says that itself
     *,*)
@@ -49,9 +86,21 @@ if [ -z "$RET" ]; then
       until db_input critical karchi/disk; db_go && db_get karchi/disk && [ -n "$RET" ]; do
         db_fset karchi/disk seen false  # "Go Back" has nowhere to go: ask again
       done
-      db_set partman-auto/disk "${RET%% *}"
       ;;
-    *) db_set partman-auto/disk "${choices%% *}" ;;
+    *) RET=$choices ;;
+  esac
+  where=$RET  # every debconf call overwrites RET
+  logger -t karchi "chosen: $where"
+  db_set partman-auto/disk "${where%% *}"
+  case $where in
+    *' free space '*)
+      # No method: the installer then does not take the whole disk, and its own question is answered here.
+      # Another system's boot files stay as they are, so nothing goes to the fallback path of its EFI partition.
+      db_set partman-auto/method ''
+      db_set partman-auto/init_automatically_partition biggest_free
+      db_fset partman-auto/init_automatically_partition seen true
+      db_set grub-installer/force-efi-extra-removable false
+      ;;
   esac
 fi
 db_settitle debian-installer/partman-base/title

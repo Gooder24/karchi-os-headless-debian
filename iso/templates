@@ -26,9 +26,12 @@ Description: Tailscale auth key:
 Template: karchi/disk
 Type: select
 Choices: ${CHOICES}
-Description: Disk to install to:
- The whole disk will be erased, after one more confirmation. The medium this
- installer was started from is not in the list.
+Description: Where to install:
+ A whole disk is erased with everything on it. "Free space" takes only the
+ largest stretch of the disk that belongs to no partition and leaves every
+ existing partition alone, so another system on it stays. One more
+ confirmation follows. The medium this installer was started from is not in
+ the list.
 
 Template: karchi/title
 Type: title
