@@ -1,0 +1,3 @@
+sk:qwerty::#include sk:
+sk:qwerty::keycode 21 = +U+0079 +U+0059 U+2190 U+00a5 Control_y Control_y Meta_y Meta_y Meta_Control_y Meta_Control_y
+sk:qwerty::keycode 44 = +U+007a +U+005a U+00b0 U+003c Control_z Control_z Meta_z Meta_less Meta_Control_z Meta_Control_z

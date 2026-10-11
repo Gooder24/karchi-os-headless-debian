@@ -59,6 +59,10 @@ cp /usr/share/karchi/apt/* /etc/apt/sources.list.d/
 # The installer's "no recommended packages" was for the installation, not a habit to leave behind.
 rm -f /etc/apt/apt.conf.d/00InstallRecommends
 
+# The keyboard is Slovak (iso/preseed.cfg); the font the console gets for an English system lacks its letters.
+sed -i 's/^CODESET=.*/CODESET="Lat2"/' /etc/default/console-setup
+setupcon --save-only
+
 update-grub  # GRUB_TIMEOUT=0 of /etc/default/grub.d/karchi.cfg
 
 # Only the test in a VM gives a key (karchi/test-key= on the kernel command line): it then has a way in

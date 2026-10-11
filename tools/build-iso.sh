@@ -70,8 +70,17 @@ xorriso -osirrox on -indev "$netinst" \
   -extract /md5sum.txt "$work/md5sum.txt" 2> /dev/null
 chmod u+w "$stage/install.amd/initrd.gz" "$work"/{grub.cfg,md5sum.txt}
 # The kernel unpacks every archive of an initrd in turn: ours adds /preseed.cfg, which the installer reads
-# before its first question.
-(cd /repo/iso && echo preseed.cfg | cpio --quiet -o -H newc -R 0:0 | gzip -9) >> "$stage/install.amd/initrd.gz"
+# before its first question, and replaces the installer's table of keymaps with one that knows Slovak QWERTY.
+keymaps=usr/share/console-setup/pc105.ekmap.gz
+mkdir -p "$work/initrd/${keymaps%/*}"
+cp /repo/iso/preseed.cfg "$work/initrd/"
+(cd "$work" && zcat "$stage/install.amd/initrd.gz" | cpio --quiet -id "$keymaps" usr/bin/ckbcomp-mini)
+{ zcat "$work/$keymaps"; cat /repo/iso/sk-qwerty.ekmap; } | gzip -9 > "$work/initrd/$keymaps"
+# The installer's own tool, asked the way the installer asks: the last line for a key is the one that counts.
+composed=$(sh "$work/usr/bin/ckbcomp-mini" "-I$work/initrd/${keymaps%/*}" sk qwerty)
+[[ $(grep '^keycode 21 =' <<< "$composed" | tail -1) == 'keycode 21 = +U+0079 '* && $(grep -c '^keycode' <<< "$composed") -gt 100 ]] \
+  || { echo 'the keymap of the installer does not come out as Slovak QWERTY' >&2; exit 1; }
+(cd "$work/initrd" && printf '%s\n' preseed.cfg "$keymaps" | cpio --quiet -o -H newc -R 0:0 | gzip -9) >> "$stage/install.amd/initrd.gz"
 # The netinst's menu up to its first entry (font, colours, theme), then our one entry.
 { sed '/^menuentry/,$d' "$work/grub.cfg"; cat /repo/iso/grub-entry.cfg; } > "$stage/boot/grub/grub.cfg"
 (cd "$stage" && find . -type f | sort | xargs md5sum) > "$work/md5sum.ours"

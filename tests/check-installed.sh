@@ -78,6 +78,16 @@ display_off() {  # as karchi-display says, as the console says (0 = not blanked)
   return 0
 }
 
+keyboard() {  # what is set, and what the console really has: Y and Z as on QWERTY, the top row Slovak
+  local keys
+  grep -qx 'XKBLAYOUT="sk"' /etc/default/keyboard && grep -qx 'XKBVARIANT="qwerty"' /etc/default/keyboard \
+    || { grep ^XKB /etc/default/keyboard; return 1; }
+  grep -qx 'CODESET="Lat2"' /etc/default/console-setup || { grep ^CODESET /etc/default/console-setup; return 1; }
+  keys=$(sudo dumpkeys)
+  grep -Eq '^keycode +21 = \+?y ' <<< "$keys" && grep -Eq '^keycode +44 = \+?z ' <<< "$keys" \
+    && grep -Eiq '^keycode +3 = \+?(lcaron|U\+013e) ' <<< "$keys" || { grep -E '^keycode +(3|21|44) =' <<< "$keys" | cut -c1-60; return 1; }
+}
+
 apt_sources() {  # nothing of the installation medium is left, and the network sources answer
   local left
   left=$(grep -rhE '^deb (cdrom|.*file:)' /etc/apt/sources.list /etc/apt/sources.list.d 2> /dev/null)
@@ -112,6 +122,7 @@ check 'Wi-Fi network from the installer is known to iwd' wifi_from_installer
 check 'Tailscale waits for a login' tailscale_waits
 check 'fastfetch greets at login' grep -q 'OS' <(bash -lic true 2> /dev/null)
 check 'the display went off after the start' display_off
+check 'the console keyboard is Slovak QWERTY, the font has its letters' keyboard
 check 'the boot menu does not wait' sudo grep -q '^ *set timeout=0' /boot/grub/grub.cfg
 check 'names resolve through systemd-resolved' getent hosts deb.debian.org
 check 'packages come from the network: Debian and Tailscale answer' apt_sources

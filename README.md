@@ -13,6 +13,7 @@ Notebook ako server bez plochy, na Debiane 13. Jedno ISO, ktoré ho nainštaluje
 | Tailscale | `tailscaled`; s auth kľúčom z inštalátora sa stroj pri prvom štarte prihlási sám (`--ssh`) |
 | fastfetch pri prihlásení | `/etc/profile.d/karchi-fastfetch.sh`, na konzole aj cez SSH |
 | Swap v pamäti | `systemd-zram-generator`, zstd |
+| Klávesnica na konzole | slovenská QWERTY (`sk`, variant `qwerty`), písmo `Lat2`; platí pre každého vrátane roota |
 | Kontrola zdravia | `karchi-doctor` |
 
 Všetko uvedené je v jedinom balíku `karchi-headless` (`pkg/`): jeho závislosti sú celý systém nad základom
@@ -24,6 +25,7 @@ Debianu, jeho súbory sú nastavenia.
 |---|---|
 | `pkg/control`, `pkg/root/` | balík `karchi-headless`; `root/` sa nainštaluje tak, ako je |
 | `iso/preseed.cfg` | odpovede pre inštalátor Debianu (všetko okrem toho, čo sa pýta človeka) |
+| `iso/sk-qwerty.ekmap` | slovenská QWERTY pre inštalátor: jeho vlastná tabuľka máp tento variant nemá |
 | `iso/questions`, `iso/templates` | naše otázky: časové pásmo, Wi-Fi sieť a heslo, Tailscale auth key, disk |
 | `iso/late` | posledný krok inštalátora: balík z média, potom `post-install` s odpoveďami |
 | `iso/grub-entry.cfg` | jediná položka ponuky štartu |
@@ -51,7 +53,8 @@ v oficiálnom `debian:trixie-slim` pod bubblewrapom; ten si `tools/sandbox.sh` p
 
 Oficiálny netinst Debianu ostáva taký, aký je, až na tri veci:
 
-1. Do initrd inštalátora sa pripojí `preseed.cfg`. Inštalátor ho načíta pred prvou otázkou.
+1. Do initrd inštalátora sa pripojí `preseed.cfg` (inštalátor ho načíta pred prvou otázkou) a jeho tabuľka
+   klávesových máp doplnená o slovenskú QWERTY.
 2. Ponuka štartu má jednu položku a po 5 sekundách ju spustí sama.
 3. Pribudne priečinok `/karchi`: naše skripty a `pool/` s balíkmi, ktoré netinst nemá (`iwd`, `systemd-resolved`,
    `keyd`, `fastfetch`, `systemd-zram-generator`, `tailscale` a ich závislosti) a balík `karchi-headless`.
@@ -100,14 +103,17 @@ je podpísaný).
 
 Inštalátor sa pýta v tomto poradí, potom už nikoho nepotrebuje:
 
-1. klávesnica;
-2. názov počítača (predvolené `karchi-server`);
-3. meno používateľa a heslo (root ostáva zamknutý, používateľ má `sudo`);
-4. časové pásmo (predvolené `Europe/Bratislava`);
-5. Wi-Fi sieť a heslo (prázdne = bez Wi-Fi);
-6. Tailscale auth key (prázdne = prihlásiť neskôr ručne);
-7. ktorý disk, len keď má stroj viac diskov. Kľúč, z ktorého inštalátor beží, v zozname nie je;
-8. potvrdenie zápisu na disk. **Prepíše sa celý vybraný disk.** Predvolená odpoveď je „No“.
+1. názov počítača (predvolené `karchi-server`);
+2. meno používateľa a heslo (root ostáva zamknutý, používateľ má `sudo`);
+3. časové pásmo (predvolené `Europe/Bratislava`);
+4. Wi-Fi sieť a heslo (prázdne = bez Wi-Fi);
+5. Tailscale auth key (prázdne = prihlásiť neskôr ručne);
+6. ktorý disk, len keď má stroj viac diskov. Kľúč, z ktorého inštalátor beží, v zozname nie je;
+7. potvrdenie zápisu na disk. **Prepíše sa celý vybraný disk.** Predvolená odpoveď je „No“.
+
+Na klávesnicu sa nepýta: je slovenská QWERTY už počas inštalácie (heslo sa teda píše tak isto ako potom na
+konzole; číslice sú so Shiftom) aj v nainštalovanom systéme. Zoznam inštalátora ponúka len slovenskú QWERTZ, preto
+je odpoveď daná vopred. Inú klávesnicu nastaví `sudo dpkg-reconfigure keyboard-configuration`.
 
 Overené s Ventoy 1.1.17 (UEFI, GPT, „Boot in normal mode“).
 

@@ -38,7 +38,6 @@ GiB = 1024**3
 # question that iso/preseed.cfg answers cannot be answered here, the file is read later and wins.
 ANSWERS = {
     'priority': 'critical',
-    'keyboard-configuration/xkb-keymap': 'us',
     'passwd/username': USER,
     'passwd/user-password': 'test',
     'passwd/user-password-again': 'test',

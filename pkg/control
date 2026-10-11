@@ -4,7 +4,7 @@ Architecture: all
 Maintainer: karchi <karchi@localhost>
 Section: metapackages
 Priority: optional
-Depends: systemd-resolved, systemd-timesyncd, libpam-systemd, iwd, wireless-regdb, tailscale, tailscale-archive-keyring, fastfetch, keyd, systemd-zram-generator, btrfs-progs, sudo, openssh-client, ca-certificates, curl, nano, less
+Depends: systemd-resolved, systemd-timesyncd, libpam-systemd, iwd, wireless-regdb, tailscale, tailscale-archive-keyring, fastfetch, keyd, systemd-zram-generator, console-setup, btrfs-progs, sudo, openssh-client, ca-certificates, curl, nano, less
 Description: KarchiOS Headless on Debian: the whole system as one package
  A laptop as a server without a desktop. The lid does nothing and the machine
  never sleeps; the display is off until SUPER+D; Wi-Fi through iwd, Tailscale,
