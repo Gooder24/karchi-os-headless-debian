@@ -1,13 +1,14 @@
 #!/bin/bash
 # Runs a command in a Debian userland without root: tools/sandbox.sh <command...>
-# The build needs apt, dpkg-deb and xorriso. The host is Arch and has none of them, and root on it asks for
-# a password; the official debian:trixie-slim root filesystem under bubblewrap gives all three.
+# The build needs apt, dpkg-deb and xorriso, its check a clock that lies (faketime). The host is Arch and has
+# none of them, and root on it asks for a password; the official debian:trixie-slim root filesystem under
+# bubblewrap gives them all.
 # Inside, the repository is /repo (read-only) and the cache is /cache.
 set -euo pipefail
 repo=$(dirname "$(dirname "$(realpath "$0")")")
 cache=${KARCHI_CACHE:-$HOME/.cache/karchi-os-headless-debian}
 root=$cache/sandbox
-tools='xorriso cpio dpkg-dev apt-utils xz-utils ca-certificates'
+tools='xorriso cpio dpkg-dev apt-utils xz-utils ca-certificates faketime'
 
 enter() {
   bwrap --unshare-user --uid 0 --gid 0 --unshare-pid --die-with-parent \

@@ -33,6 +33,7 @@ Debianu, jeho súbory sú nastavenia.
 | `tools/build-iso.sh` | zostavenie ISO |
 | `tools/vm.py` | testovacia VM: inštalácia, štart, kontroly, klávesy, snímky |
 | `tests/check-installed.sh` | kontroly nainštalovaného systému |
+| `tests/check-medium.sh` | kontrola hotového ISO: všetko, čo si `iso/late` pýta, je na médiu, aj so zlými hodinami |
 | `build.conf` | verzia a súčet netinst ISO, veľkosť testovacej VM |
 
 Veľké súbory sú mimo repa v `~/.cache/karchi-os-headless-debian`: `dl/` (netinst, rootfs pieskoviska),
@@ -64,6 +65,12 @@ na úplne prázdnom systéme, a z toho sa vynechá všetko, čo netinst už nesi
 z `pkgs.tailscale.com` (podpis overuje `apt`), ostatné z `deb.debian.org`.
 
 Zavádzacie záznamy (BIOS, UEFI, tabuľka oddielov pre USB kľúč) prepíše `xorriso` v tej istej podobe, akú má netinst.
+
+`make iso` končí kontrolou `tests/check-medium.sh`: z hotového ISO vyberie príkazy `apt`, ktoré spúšťa `iso/late`,
+a spustí ich v pieskovisku s hodinami nastavenými na rok 2013. Musia prejsť len z média. Starý notebook
+s vybitou batériou hodín štartuje v minulosti a `apt` vtedy odmietne súbor `Release` novší než jeho hodiny
+(„not valid yet“); inštalátor z toho ukáže len `"sh /cdrom/karchi/late" failed with exit code 100`. Preto `late`
+dátum nekontroluje (`Acquire::Check-Date=false`).
 
 ### Test vo VM
 
@@ -116,6 +123,8 @@ konzole; číslice sú so Shiftom) aj v nainštalovanom systéme. Zoznam inštal
 je odpoveď daná vopred. Inú klávesnicu nastaví `sudo dpkg-reconfigure keyboard-configuration`.
 
 Overené s Ventoy 1.1.17 (UEFI, GPT, „Boot in normal mode“).
+
+Keď sa inštalátor zastaví s chybou, `Alt + F4` ukáže jeho log (späť `Alt + F1`); prečo, hovoria riadky s `E:`.
 
 Po reštarte displej zhasne. `SUPER + D` ho rozsvieti, na konzole je prihlasovací riadok.
 

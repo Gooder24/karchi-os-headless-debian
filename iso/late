@@ -22,7 +22,9 @@ cat > "$list" << END
 deb [trusted=yes] file:/media/karchi stable main non-free-firmware
 deb [trusted=yes] file:/media/karchi/karchi/pool ./
 END
-only='-o Dir::Etc::sourcelist=sources.list.d/karchi-install.list -o Dir::Etc::sourceparts=-'
+# No date is checked: a laptop whose clock battery has died starts in some past year, and apt then refuses the
+# medium's Release file as "not valid yet" (exit code 100). Nothing here comes over a network.
+only='-o Dir::Etc::sourcelist=sources.list.d/karchi-install.list -o Dir::Etc::sourceparts=- -o Acquire::Check-Date=false'
 
 # Firmware for what this machine has. The installer adds what it detects itself; a server that cannot be
 # reached without Wi-Fi does not rely on that.

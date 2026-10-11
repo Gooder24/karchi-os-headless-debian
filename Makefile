@@ -15,6 +15,7 @@ check: ## static checks and self-tests on the host (seconds)
 
 iso: check ## build the ISO into ~/.cache/karchi-os-headless-debian/out (first run downloads about 0.9 GB)
 	tools/sandbox.sh /repo/tools/build-iso.sh
+	tools/sandbox.sh /repo/tests/check-medium.sh
 
 vm-test: ## install the newest ISO into a fresh VM without network, boot it twice with a power cut between, check it
 	$(VM) test
