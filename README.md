@@ -54,8 +54,11 @@ v oficiálnom `debian:trixie-slim` pod bubblewrapom; ten si `tools/sandbox.sh` p
 
 Oficiálny netinst Debianu ostáva taký, aký je, až na tri veci:
 
-1. Do initrd inštalátora sa pripojí `preseed.cfg` (inštalátor ho načíta pred prvou otázkou) a jeho tabuľka
-   klávesových máp doplnená o slovenskú QWERTY.
+1. Do initrd inštalátora sa pripojí `preseed.cfg` (inštalátor ho načíta pred prvou otázkou) a dva jeho súbory
+   doplnené o slovenskú QWERTY: tabuľka klávesových máp a zoznam klávesníc, ktoré jeho otázka pozná. Odpoveď, ktorá
+   v tom zozname nie je, inštalátor potichu nahradí predvolenou `us` a tú potom zdedí aj nainštalovaný systém.
+   Zostavenie preto krok klávesnice spustí v userlande samotného inštalátora a skončí chybou, ak z neho klávesnica
+   z `preseed.cfg` nevyjde nezmenená.
 2. Ponuka štartu má jednu položku a po 5 sekundách ju spustí sama.
 3. Pribudne priečinok `/karchi`: naše skripty a `pool/` s balíkmi, ktoré netinst nemá (`iwd`, `systemd-resolved`,
    `keyd`, `fastfetch`, `systemd-zram-generator`, `tailscale` a ich závislosti) a balík `karchi-headless`.

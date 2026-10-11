@@ -70,17 +70,34 @@ xorriso -osirrox on -indev "$netinst" \
   -extract /md5sum.txt "$work/md5sum.txt" 2> /dev/null
 chmod u+w "$stage/install.amd/initrd.gz" "$work"/{grub.cfg,md5sum.txt}
 # The kernel unpacks every archive of an initrd in turn: ours adds /preseed.cfg, which the installer reads
-# before its first question, and replaces the installer's table of keymaps with one that knows Slovak QWERTY.
+# before its first question, and replaces two files of the installer so that it knows Slovak QWERTY: its table
+# of keymaps, and the list of keyboards its question accepts. An answer that is not in that list debconf
+# replaces with the default, "us", without a word, and the installed system then inherits "us" as well.
 keymaps=usr/share/console-setup/pc105.ekmap.gz
-mkdir -p "$work/initrd/${keymaps%/*}"
+templates=var/lib/dpkg/info/console-setup-udeb.templates
+installer=$work/installer  # the installer's userland; its device nodes cannot be made here and are not needed
+mkdir -p "$installer" "$work/initrd"/{"${keymaps%/*}","${templates%/*}"}
+(cd "$installer" && zcat "$stage/install.amd/initrd.gz" | cpio --quiet -id -f 'dev/*')
 cp /repo/iso/preseed.cfg "$work/initrd/"
-(cd "$work" && zcat "$stage/install.amd/initrd.gz" | cpio --quiet -id "$keymaps" usr/bin/ckbcomp-mini)
-{ zcat "$work/$keymaps"; cat /repo/iso/sk-qwerty.ekmap; } | gzip -9 > "$work/initrd/$keymaps"
+{ zcat "$installer/$keymaps"; cat /repo/iso/sk-qwerty.ekmap; } | gzip -9 > "$work/initrd/$keymaps"
+sed -e '/^Template: keyboard-configuration\/xkb-keymap$/,/^$/{' -e 's/^Choices-C: .*/&, sk(qwerty)/;t' \
+  -e 's/^Choices[^:]*: .*/&, Slovak (QWERTY)/' -e '}' "$installer/$templates" > "$work/initrd/$templates"
 # The installer's own tool, asked the way the installer asks: the last line for a key is the one that counts.
-composed=$(sh "$work/usr/bin/ckbcomp-mini" "-I$work/initrd/${keymaps%/*}" sk qwerty)
+composed=$(sh "$installer/usr/bin/ckbcomp-mini" "-I$work/initrd/${keymaps%/*}" sk qwerty)
 [[ $(grep '^keycode 21 =' <<< "$composed" | tail -1) == 'keycode 21 = +U+0079 '* && $(grep -c '^keycode' <<< "$composed") -gt 100 ]] \
   || { echo 'the keymap of the installer does not come out as Slovak QWERTY' >&2; exit 1; }
-(cd "$work/initrd" && printf '%s\n' preseed.cfg "$keymaps" | cpio --quiet -o -H newc -R 0:0 | gzip -9) >> "$stage/install.amd/initrd.gz"
+# The installer's keyboard step, run in its own userland on the files it will start with: the keyboard has to
+# come out of it as the preseed asks.
+cp -a "$work/initrd/." "$installer/"
+asked=$(sed -n 's|^d-i keyboard-configuration/xkb-keymap select ||p' /repo/iso/preseed.cfg)
+kept=$(chroot "$installer" sh -c '
+  debconf-loadtemplate d-i /var/lib/dpkg/info/*.templates > /dev/null
+  sh /lib/debian-installer-startup.d/S30initrd-preseed
+  DEBIAN_FRONTEND=noninteractive /usr/share/console-setup/keyboard-configuration.config
+  debconf-get keyboard-configuration/xkb-keymap') || true
+[[ -n $asked && $kept == "$asked" ]] \
+  || { echo "the installer turns the keyboard \"$asked\" of iso/preseed.cfg into \"$kept\"" >&2; exit 1; }
+(cd "$work/initrd" && printf '%s\n' preseed.cfg "$keymaps" "$templates" | cpio --quiet -o -H newc -R 0:0 | gzip -9) >> "$stage/install.amd/initrd.gz"
 # The netinst's menu up to its first entry (font, colours, theme), then our one entry.
 { sed '/^menuentry/,$d' "$work/grub.cfg"; cat /repo/iso/grub-entry.cfg; } > "$stage/boot/grub/grub.cfg"
 (cd "$stage" && find . -type f | sort | xargs md5sum) > "$work/md5sum.ours"

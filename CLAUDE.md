@@ -14,6 +14,8 @@
 - `make check` — statické kontroly a samotest na hostiteľovi (sekundy).
 - `make iso` končí kontrolou `tests/check-medium.sh` (v pieskovisku, bez VM): `apt` z `iso/late` musí prejsť len z média
   a s hodinami v roku 2013.
+- `make iso` cestou spustí krok klávesnice inštalátora v jeho vlastnom userlande (`chroot` v pieskovisku, bez VM):
+  klávesnica z `iso/preseed.cfg` z neho musí vyjsť nezmenená, inak zostavenie skončí chybou.
 - `make iso && make vm-test` — brána: inštalácia bez siete do čistej VM, dva štarty s výpadkom napájania medzi nimi,
   `tests/check-installed.sh` a `SUPER + D` cez klávesnicu VM. Asi 10 minút.
 - Zmena otázok inštalátora alebo ponuky štartu sa overuje aj ručne cez `tools/vm.py manual` (snímky obrazovky):

@@ -11,7 +11,8 @@ root=$cache/sandbox
 tools='xorriso cpio dpkg-dev apt-utils xz-utils ca-certificates faketime'
 
 enter() {
-  bwrap --unshare-user --uid 0 --gid 0 --unshare-pid --die-with-parent \
+  # CAP_SYS_CHROOT: the build runs the installer's keyboard step inside the installer's own userland.
+  bwrap --unshare-user --uid 0 --gid 0 --unshare-pid --die-with-parent --cap-add CAP_SYS_CHROOT \
     --bind "$root" / --proc /proc --dev /dev --tmpfs /tmp \
     --ro-bind /etc/resolv.conf /etc/resolv.conf --ro-bind "$repo" /repo --bind "$cache" /cache \
     --setenv PATH /usr/sbin:/usr/bin:/sbin:/bin --setenv HOME /root --setenv LC_ALL C.UTF-8 \
