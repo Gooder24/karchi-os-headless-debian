@@ -1,0 +1,77 @@
+#!/bin/bash
+# Is this KarchiOS Headless server healthy? Run it on the console or over SSH, as yourself.
+#   ok    works
+#   WARN  works, but something is still to be done by hand (the line says what)
+#   FAIL  broken; the exit code is then 1
+# It changes nothing.
+set -u
+failed=0
+
+check() {  # check "<description>" <command...>
+  local name=$1 output
+  shift
+  if output=$("$@" 2>&1); then
+    printf 'ok    %s\n' "$name"
+  else
+    printf 'FAIL  %s\n' "$name"
+    [[ -n $output ]] && sed 's/^/        /' <<< "$output"
+    failed=1
+  fi
+}
+
+warn() { printf 'WARN  %s\n' "$1"; }
+
+no_failed_units() {
+  local units
+  units=$(systemctl --failed --no-legend --plain)
+  [[ -z $units ]] || { echo "$units"; return 1; }
+}
+
+all_units() {  # all_units is-active|is-enabled <unit...>: systemctl alone is content when one of them is
+  local state=$1 unit
+  shift
+  for unit; do
+    systemctl "$state" --quiet "$unit" || { echo "$unit: $(systemctl "$state" "$unit")"; return 1; }
+  done
+}
+
+logind() { busctl "$1" org.freedesktop.login1 /org/freedesktop/login1 "${@:2}"; }
+
+lid_ignored() {
+  local property value
+  for property in HandleLidSwitch HandleLidSwitchExternalPower HandleLidSwitchDocked; do
+    value=$(logind get-property org.freedesktop.login1.Manager "$property") || return 1
+    [[ $value == 's "ignore"' ]] || { echo "$property is $value"; return 1; }
+  done
+}
+
+never_sleeps() {
+  local method answer
+  for method in CanSuspend CanHibernate; do
+    answer=$(logind call org.freedesktop.login1.Manager "$method") || return 1
+    [[ $answer != 's "yes"' ]] || { echo "$method says yes"; return 1; }
+  done
+}
+
+check 'no failed service' no_failed_units
+check 'services run: network, Wi-Fi, Tailscale, SUPER+D' \
+  all_units is-active systemd-networkd systemd-resolved iwd tailscaled keyd
+check 'the lid does nothing' lid_ignored
+check 'the machine never sleeps' never_sleeps
+check 'swap in compressed memory' grep -q '^/dev/zram' /proc/swaps
+check 'the display answers karchi-display' grep -qx -e on -e off <(karchi-display status)
+
+if ip route get 1.1.1.1 > /dev/null 2>&1; then
+  printf 'ok    %s\n' "network: $(ip -4 -o route get 1.1.1.1 | sed 's/.* dev \([^ ]*\).* src \([^ ]*\).*/\2 on \1/')"
+else
+  warn 'no network: Wi-Fi with "iwctl station wlan0 connect <network>", or plug in a cable'
+fi
+
+case $(tailscale status --json 2> /dev/null | sed -n 's/.*"BackendState": *"\([^"]*\)".*/\1/p') in
+  Running) printf 'ok    %s\n' "Tailscale: $(tailscale ip -4 2> /dev/null | head -1)" ;;
+  NeedsLogin | NoState | Stopped) warn 'Tailscale is not logged in: sudo tailscale up --ssh' ;;
+  *) printf 'FAIL  %s\n' 'Tailscale does not answer'; failed=1 ;;
+esac
+
+printf '      display is %s (SUPER+D)\n' "$(karchi-display status)"
+exit $failed

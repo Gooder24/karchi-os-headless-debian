@@ -1,0 +1,74 @@
+#!/bin/bash
+# The part of the installation that needs the new system's own tools. The installer (iso/late) runs it inside
+# that system, with its answers in the environment:
+#   KARCHI_TIMEZONE  KARCHI_WIFI_SSID  KARCHI_WIFI_PSK  KARCHI_TAILSCALE_KEY  KARCHI_USER  KARCHI_TEST_KEY
+# Run again it changes nothing that is already so.
+#   post-install --self-test    check the one piece of logic here and exit
+set -euo pipefail
+
+iwd_name() {  # the file iwd reads a network from: its name, or =<hex> when the name has other characters
+  local LC_ALL=C  # bytes: in a UTF-8 locale a-z takes "ň" as well
+  if [[ $1 =~ ^[A-Za-z0-9\ _-]+$ ]]; then
+    printf '%s' "$1"
+  else
+    printf '=%s' "$(printf '%s' "$1" | od -An -tx1 | tr -d ' \n')"
+  fi
+}
+
+if [[ ${1:-} == --self-test ]]; then
+  [[ $(iwd_name 'Home Net_5-G') == 'Home Net_5-G' ]]
+  [[ $(iwd_name 'a.b') == '=612e62' ]]
+  [[ $(iwd_name 'Kaviareň') == '=4b617669617265c588' ]]
+  echo 'post-install: self-test ok'
+  exit
+fi
+
+# sshd is not among them: the way in is Tailscale SSH.
+systemctl enable systemd-networkd systemd-resolved systemd-timesyncd iwd tailscaled keyd \
+  karchi-display-off karchi-tailscale-up
+# A machine with no cable would wait two minutes for one at every start.
+systemctl disable systemd-networkd-wait-online
+ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+install -m 644 /usr/share/karchi/iwd-main.conf /etc/iwd/main.conf
+
+timezone=${KARCHI_TIMEZONE:-}
+if [[ -n $timezone && -e /usr/share/zoneinfo/$timezone ]]; then
+  ln -sf "/usr/share/zoneinfo/$timezone" /etc/localtime
+  [[ ! -e /etc/timezone ]] || echo "$timezone" > /etc/timezone
+elif [[ -n $timezone ]]; then
+  echo "post-install: no time zone \"$timezone\", keeping $(readlink /etc/localtime)" >&2
+fi
+
+if [[ -n ${KARCHI_WIFI_SSID:-} ]]; then
+  install -d -m 700 /var/lib/iwd
+  network=/var/lib/iwd/$(iwd_name "$KARCHI_WIFI_SSID")
+  if [[ -n ${KARCHI_WIFI_PSK:-} ]]; then
+    (umask 077; printf '[Security]\nPassphrase=%s\n' "$KARCHI_WIFI_PSK" > "$network.psk")
+  else
+    (umask 077; : > "$network.open")
+  fi
+fi
+
+if [[ -n ${KARCHI_TAILSCALE_KEY:-} ]]; then
+  install -d -m 700 /etc/karchi
+  (umask 077; printf '%s\n' "$KARCHI_TAILSCALE_KEY" > /etc/karchi/tailscale-authkey)
+fi
+
+# The installer worked from its own medium; from now on packages come from the network.
+cp /usr/share/karchi/apt/* /etc/apt/sources.list.d/
+# The installer's "no recommended packages" was for the installation, not a habit to leave behind.
+rm -f /etc/apt/apt.conf.d/00InstallRecommends
+
+update-grub  # GRUB_TIMEOUT=0 of /etc/default/grub.d/karchi.cfg
+
+# Only the test in a VM gives a key (karchi/test-key= on the kernel command line): it then has a way in
+# and sudo without a password.
+if [[ -n ${KARCHI_TEST_KEY:-} ]]; then
+  home=$(getent passwd "$KARCHI_USER" | cut -d: -f6)
+  install -d -m 700 -o "$KARCHI_USER" -g "$KARCHI_USER" "$home/.ssh"
+  echo "ssh-ed25519 $KARCHI_TEST_KEY karchi-test" > "$home/.ssh/authorized_keys"
+  chown "$KARCHI_USER:$KARCHI_USER" "$home/.ssh/authorized_keys"
+  echo "$KARCHI_USER ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/karchi-test
+  chmod 440 /etc/sudoers.d/karchi-test
+  systemctl enable ssh
+fi

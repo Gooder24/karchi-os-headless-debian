@@ -1,0 +1,3 @@
+# A graphics driver that takes the screen over (i915 after the firmware's framebuffer) turns it on. When that
+# happens after karchi-display-off.service, the display would stay on: set it again to what it was set to.
+ACTION=="add", SUBSYSTEM=="graphics", KERNEL=="fb[0-9]*", RUN+="/usr/bin/karchi-display again"

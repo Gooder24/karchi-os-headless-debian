@@ -1,0 +1,25 @@
+#!/bin/sh
+# The built-in display without a desktop: karchi-display on|off|toggle|status
+# Off is the console's forced blanking (setterm --blank force). Plain blanking, which is also what writing to
+# /sys/class/graphics/fb0/blank gives, is undone by any key press: by releasing SUPER+D itself.
+# The backlight is switched too, for a machine whose graphics driver cannot power its panel down.
+# Needs root; status does not.
+state=/run/karchi/display
+console() { setterm --term linux --blank "$@" < /dev/tty0; }
+
+case ${1:-status} in
+  status) cat "$state" 2> /dev/null || echo on; exit ;;
+  toggle) if [ "$(console)" = 0 ]; then set -- off; else set -- on; fi ;;
+  again) set -- "$("$0" status)" ;;  # udev: a graphics driver has just taken the screen over, and turned it on
+esac
+case $1 in
+  on) console poke; power=0 ;;
+  # Unblanked first: the console skips blanking when it counts itself blanked already, which it does after a
+  # new driver has lit the screen behind its back.
+  off) console poke; console force; power=4 ;;
+  *) echo 'usage: karchi-display on|off|toggle|status' >&2; exit 2 ;;
+esac
+for file in /sys/class/backlight/*/bl_power; do
+  [ -w "$file" ] && echo "$power" > "$file"
+done
+mkdir -p /run/karchi && echo "$1" > "$state"

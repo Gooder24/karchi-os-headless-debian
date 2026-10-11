@@ -1,0 +1,17 @@
+#!/bin/sh
+# Our own questions (partman/early_command): asked right before partitioning, so that all questions come
+# first and the installation then needs nobody. An answer given on the kernel command line
+# (karchi/wifi-ssid=...) counts as seen and is not asked again.
+. /usr/share/debconf/confmodule
+db_x_loadtemplatefile /cdrom/karchi/templates karchi
+
+db_input high karchi/timezone || true
+db_input high karchi/wifi-ssid || true
+db_go || true
+db_get karchi/wifi-ssid
+if [ -n "$RET" ]; then
+  db_input high karchi/wifi-psk || true
+  db_go || true
+fi
+db_input high karchi/tailscale-key || true
+db_go || true

@@ -1,0 +1,60 @@
+#!/bin/sh
+# The last step of the Debian installer (preseed/late_command); the new system is under /target.
+# Turns Debian's base system into KarchiOS Headless: our package with all it depends on, from this medium
+# alone, then the answers. Says KARCHI-INSTALL: OK or FAILED on the serial port, for the test in a VM.
+set -eu
+
+serial() { { echo "$1" > /dev/ttyS0; } 2> /dev/null || true; }
+failed() {
+  serial "$(tail -n 40 /var/log/syslog)"
+  serial 'KARCHI-INSTALL: FAILED'
+}
+trap failed EXIT
+
+answer() { debconf-get "$1" 2> /dev/null || true; }
+
+# The installer's packages and ours, both read where they lie on the medium.
+medium=/target/media/karchi
+list=/target/etc/apt/sources.list.d/karchi-install.list
+mkdir -p "$medium"
+mount -o bind /cdrom "$medium"
+cat > "$list" << END
+deb [trusted=yes] file:/media/karchi stable main non-free-firmware
+deb [trusted=yes] file:/media/karchi/karchi/pool ./
+END
+only='-o Dir::Etc::sourcelist=sources.list.d/karchi-install.list -o Dir::Etc::sourceparts=-'
+
+# Firmware for what this machine has. The installer adds what it detects itself; a server that cannot be
+# reached without Wi-Fi does not rely on that.
+packages=karchi-headless
+grep -q GenuineIntel /proc/cpuinfo && packages="$packages intel-microcode"
+for device in /sys/bus/pci/devices/*; do
+  [ "$(cat "$device/vendor")" = 0x8086 ] || continue
+  case $(cat "$device/class") in
+    0x03*) packages="$packages firmware-intel-graphics" ;;
+    0x0280*) packages="$packages firmware-iwlwifi" ;;
+  esac
+done
+test_key=$(answer karchi/test-key)
+[ -z "$test_key" ] || packages="$packages openssh-server"
+
+in-target apt-get $only update
+in-target apt-get $only install -y --no-install-recommends $packages
+
+KARCHI_TIMEZONE=$(answer karchi/timezone) \
+KARCHI_WIFI_SSID=$(answer karchi/wifi-ssid) \
+KARCHI_WIFI_PSK=$(answer karchi/wifi-psk) \
+KARCHI_TAILSCALE_KEY=$(answer karchi/tailscale-key) \
+KARCHI_USER=$(answer passwd/username) \
+KARCHI_TEST_KEY=$test_key \
+  in-target /usr/lib/karchi/post-install
+
+# The installer leaves its answers in /var/log/installer of the new system: not these two.
+debconf-set karchi/wifi-psk '' || true
+debconf-set karchi/tailscale-key '' || true
+
+rm -f "$list" /target/var/lib/apt/lists/*media_karchi*
+umount "$medium"
+rmdir "$medium"
+trap - EXIT
+serial 'KARCHI-INSTALL: OK'

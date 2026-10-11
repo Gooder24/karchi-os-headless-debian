@@ -1,0 +1,17 @@
+# Only when the installer was given an auth key. The key is removed once it has been used; until then the
+# unit tries again, as right after the start there may be no network yet.
+[Unit]
+Description=Join the tailnet with the key given to the installer
+ConditionPathExists=/etc/karchi/tailscale-authkey
+Wants=tailscaled.service
+After=tailscaled.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/tailscale up --auth-key=file:/etc/karchi/tailscale-authkey --ssh --timeout=60s
+ExecStartPost=/usr/bin/rm -f /etc/karchi/tailscale-authkey
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

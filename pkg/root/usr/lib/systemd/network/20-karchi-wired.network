@@ -1,0 +1,6 @@
+# A cable (or a USB network adapter) just works; Wi-Fi is iwd's own business.
+[Match]
+Name=en*
+
+[Network]
+DHCP=yes

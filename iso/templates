@@ -1,0 +1,24 @@
+Template: karchi/timezone
+Type: string
+Default: Europe/Bratislava
+Description: Time zone:
+ As in /usr/share/zoneinfo, for example Europe/Bratislava or UTC.
+
+Template: karchi/wifi-ssid
+Type: string
+Description: Wi-Fi network name:
+ The server joins this network at every start. Leave it empty for no Wi-Fi:
+ a cable works without any setting, and a network can be added later with
+ "iwctl station wlan0 connect <name>".
+
+Template: karchi/wifi-psk
+Type: password
+Description: Wi-Fi password:
+ Leave it empty for a network without a password.
+
+Template: karchi/tailscale-key
+Type: string
+Description: Tailscale auth key:
+ With a key (tskey-auth-...) the server joins your tailnet by itself at its
+ first start, with Tailscale SSH on. Leave it empty to log in later by hand:
+ "sudo tailscale up --ssh".
