@@ -4,6 +4,7 @@
 # (karchi/wifi-ssid=...) counts as seen and is not asked again.
 . /usr/share/debconf/confmodule
 db_x_loadtemplatefile /cdrom/karchi/templates karchi
+db_settitle karchi/title
 
 db_input high karchi/timezone || true
 db_input high karchi/wifi-ssid || true
@@ -15,3 +16,42 @@ if [ -n "$RET" ]; then
 fi
 db_input high karchi/tailscale-key || true
 db_go || true
+
+# Which disk. The installer's own list offers the USB stick it was started from, and puts it first: under
+# Ventoy /cdrom is a device-mapper device on a partition of the stick, under a made-up name. Here the medium
+# is found by its device number and left out. With one disk left there is nothing to ask; "write the changes
+# to disks?" still comes.
+describe() {  # /dev/sda - 512 GB Samsung SSD 860
+  # shellcheck disable=SC2046  # unquoted on purpose: a model is padded with spaces
+  echo "$1 - $(($(cat "/sys/block/${1#/dev/}/size") / 1953125)) GB" \
+    $(cat "/sys/block/${1#/dev/}/device/model" 2> /dev/null | tr -d ,)
+}
+
+db_get partman-auto/disk
+if [ -z "$RET" ]; then
+  medium=
+  while read -r _ _ number _ where _; do
+    [ "$where" = /cdrom ] || continue
+    medium="$(basename "$(readlink -f "/sys/dev/block/$number")") $(ls "/sys/dev/block/$number/slaves" 2> /dev/null)"
+  done < /proc/self/mountinfo
+  choices=
+  for device in $(list-devices disk); do
+    for part in $medium; do
+      if [ "/dev/$part" = "$device" ] || [ -e "/sys/block/${device#/dev/}/$part" ]; then continue 2; fi
+    done
+    choices="${choices:+$choices, }$(describe "$device")"
+  done
+  logger -t karchi "medium: $medium; disks to choose from: $choices"
+  case $choices in
+    '') ;;  # no disk at all: the installer says that itself
+    *,*)
+      db_subst karchi/disk CHOICES "$choices"
+      until db_input critical karchi/disk; db_go && db_get karchi/disk && [ -n "$RET" ]; do
+        db_fset karchi/disk seen false  # "Go Back" has nowhere to go: ask again
+      done
+      db_set partman-auto/disk "${RET%% *}"
+      ;;
+    *) db_set partman-auto/disk "${choices%% *}" ;;
+  esac
+fi
+db_settitle debian-installer/partman-base/title

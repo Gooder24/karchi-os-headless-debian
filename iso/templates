@@ -22,3 +22,14 @@ Description: Tailscale auth key:
  With a key (tskey-auth-...) the server joins your tailnet by itself at its
  first start, with Tailscale SSH on. Leave it empty to log in later by hand:
  "sudo tailscale up --ssh".
+
+Template: karchi/disk
+Type: select
+Choices: ${CHOICES}
+Description: Disk to install to:
+ The whole disk will be erased, after one more confirmation. The medium this
+ installer was started from is not in the list.
+
+Template: karchi/title
+Type: title
+Description: KarchiOS Headless

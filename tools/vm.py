@@ -6,11 +6,12 @@
   vm.py up | down       boot the installed test disk again (SSH on the test port) | stop it
   vm.py check           run tests/check-installed.sh and the checks of the screen against the running test VM
   vm.py ssh [command]   a shell, or one command, in the running test VM
-  vm.py manual          start the ISO the way a real machine does: its own boot menu, two disks, no answers;
-                        then by hand with key, type and shot. The installed disk starts with "up".
+  vm.py manual [image]  start the way a real machine does: from a USB stick with the ISO written to it (or from
+                        the image of another stick, such as one with Ventoy), through the boot menu, two disks, no
+                        answers; then by hand with key, type and shot. The installed disk starts with "up".
   vm.py key <combo...>  press keys in the running VM: ret, tab, down, meta_l-d, alt-f4
   vm.py type <text>     type text
-  vm.py shot            PNG of the screen; prints its path
+  vm.py shot            PNG of the screen once it has stopped changing; prints its path
 """
 import json
 import os
@@ -41,7 +42,6 @@ ANSWERS = {
     'passwd/username': USER,
     'passwd/user-password': 'test',
     'passwd/user-password-again': 'test',
-    'partman-auto/disk': '/dev/vda',
     'partman/confirm': 'true',
     'partman/confirm_nooverwrite': 'true',
     'karchi/timezone': 'Europe/Prague',
@@ -162,8 +162,11 @@ class QMP:
         return reply.get('return')
 
 
-QCODES = {'\n': 'ret', ' ': 'spc', '-': 'minus', '.': 'dot', '/': 'slash', '=': 'equal', ',': 'comma'}
-SHIFTED = {'_': 'minus', ':': 'semicolon', '?': 'slash', '!': '1', '@': '2'}
+QCODES = {'\n': 'ret', ' ': 'spc', '-': 'minus', '.': 'dot', '/': 'slash', '=': 'equal', ',': 'comma',
+          ';': 'semicolon', "'": 'apostrophe', '[': 'bracket_left', ']': 'bracket_right', '\\': 'backslash'}
+SHIFTED = {'_': 'minus', ':': 'semicolon', '?': 'slash', '!': '1', '@': '2', '#': '3', '$': '4', '%': '5',
+           '&': '7', '*': '8', '(': '9', ')': '0', '+': 'equal', '"': 'apostrophe', '<': 'comma', '>': 'dot',
+           '|': 'backslash', '{': 'bracket_left', '}': 'bracket_right'}
 
 
 def press(qmp, *combos, pause=0.3):
@@ -186,6 +189,18 @@ def shot(qmp=None):
     return png
 
 
+def settled(qmp, timeout=40):
+    """Wait until the screen has stopped changing: the installer keeps drawing for a while after a key."""
+    ppm, last = VM / 'screen.ppm', None
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        qmp.cmd('screendump', filename=str(ppm))
+        if ppm.read_bytes() == last:
+            return
+        last = ppm.read_bytes()
+        time.sleep(2)
+
+
 # --- the test -------------------------------------------------------------------------------------------------
 
 def newest_iso():
@@ -206,19 +221,27 @@ def fresh_machine():
     shutil.copy(OVMF_VARS, VM / 'test-vars.fd')
 
 
+def stick(image):
+    """A USB stick with this image on it. Writable, as a real one is (Ventoy does not start from a read-only
+    stick), but what is written goes to a layer QEMU throws away: the image stays as it is."""
+    return ('-device', 'qemu-xhci', '-drive', f'if=none,id=stick,format=raw,snapshot=on,file={image}',
+            '-device', 'usb-storage,drive=stick,bootindex=1')
+
+
 def install(iso):
-    """Unattended, without network. The installer's kernel is started directly, to give it ANSWERS; the menu
-    of the ISO itself is what "manual" goes through."""
+    """Unattended, without network, from a USB stick as on a real machine: the stick is a disk too, and the
+    installer must not take it for the one to install to (it would then stop and ask which). The installer's
+    kernel is started directly, to give it ANSWERS; the menu of the ISO itself is what "manual" goes through."""
     fresh_machine()
     answers = ANSWERS | {'karchi/test-key': public_key()}
     append = ' '.join(f'{key}={value}' for key, value in answers.items()) + ' --- quiet'
     started = time.time()
     qemu('install.log', '-kernel', OUT / 'vmlinuz', '-initrd', OUT / 'initrd.gz', '-append', append,
-         '-cdrom', iso, '-nic', 'none', '-no-reboot', cache='unsafe')  # dpkg syncs all the time: three times faster
-    if not wait_exit(45 * 60):
+         *stick(iso), '-nic', 'none', '-no-reboot', cache='unsafe')  # dpkg syncs all the time: three times faster
+    if not wait_exit(15 * 60):
         shot()
         down()
-        die(f'the installation did not end in 45 minutes; its last screen is in {VM}/screen.png')
+        die(f'the installation did not end in 15 minutes; its last screen is in {VM}/screen.png')
     log = (VM / 'install.log').read_text(errors='replace')
     if 'KARCHI-INSTALL: OK' not in log:
         die(f'the installation failed:\n{log[-4000:]}')
@@ -231,10 +254,13 @@ def up():
 
 
 def screen_lit(qmp):
-    """Whether anything is on the screen: QEMU's std VGA shows a blanked console as all black."""
+    """Whether the screen of the VM shows anything. QEMU's std VGA shows a blanked console as all black. When
+    it was never asked for a picture while the output was on, it shows a notice of its own instead ("Guest has
+    not initialized the display"), 640 x 480, which no mode of the console in this VM is: that is dark too."""
     ppm = VM / 'screen.ppm'
     qmp.cmd('screendump', filename=str(ppm))
-    return any(ppm.read_bytes().split(b'\n', 3)[3])  # P6, width and height, 255, then the pixels
+    _magic, size, _depth, pixels = ppm.read_bytes().split(b'\n', 3)  # P6, width and height, 255, then the pixels
+    return size != b'640 480' and any(pixels)
 
 
 def display_keys():
@@ -275,10 +301,10 @@ def test():
     print('PASS')
 
 
-def manual():
+def manual(image=None):
     fresh_machine()
     fresh_disk('other.img', 2)  # with two disks the installer asks which one
-    qemu('install.log', '-drive', f'if=virtio,format=raw,file={VM / "other.img"}', '-cdrom', newest_iso(),
+    qemu('install.log', '-drive', f'if=virtio,format=raw,file={VM / "other.img"}', *stick(image or newest_iso()),
          '-nic', 'none', '-no-reboot')
     print('started; vm.py shot, vm.py key ret, vm.py type <text>')
 
@@ -297,12 +323,14 @@ if __name__ == '__main__':
     elif command == 'ssh':
         sys.exit(ssh(' '.join(rest) or None, check=False).returncode)
     elif command == 'manual':
-        manual()
+        manual(*rest)
     elif command == 'key':
         press(QMP(), *rest)
     elif command == 'type':
         type_text(QMP(), ' '.join(rest))
     elif command == 'shot':
-        print(shot())
+        monitor = QMP()
+        settled(monitor)
+        print(shot(monitor))
     else:
         print(__doc__)

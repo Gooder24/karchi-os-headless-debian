@@ -70,9 +70,12 @@ lid_and_sleep() {
   [[ $value != 's "yes"' ]] || { echo 'the machine could suspend'; return 1; }
 }
 
-display_off() {  # as karchi-display says, and as the console itself says (0 = not blanked)
+display_off() {  # as karchi-display says, as the console says (0 = not blanked), and as the video driver says
   [[ $(karchi-display status) == off ]] || { echo "karchi-display status: $(karchi-display status)"; return 1; }
   [[ $(sudo sh -c 'setterm --term linux --blank < /dev/tty0') != 0 ]] || { echo 'the console is not blanked'; return 1; }
+  # The console can count as blanked over an output that something has turned on again behind its back.
+  sudo grep -q 'active=1' /sys/kernel/debug/dri/0/state && { echo 'the video output is on'; return 1; }
+  return 0
 }
 
 apt_sources() {  # nothing of the installation medium is left, and the network sources answer

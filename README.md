@@ -8,7 +8,7 @@ Notebook ako server bez plochy, na Debiane 13. Jedno ISO, ktoré ho nainštaluje
 | Veko nič nerobí | `logind.conf.d`: `HandleLidSwitch*=ignore` |
 | Stroj nikdy nespí | `sleep.conf.d`: `AllowSuspend=no`, `AllowHibernation=no` |
 | Po zapnutí nabehne sám | disk bez šifrovania, ponuka štartu nečaká (`GRUB_TIMEOUT=0`), prihlasovací riadok na konzole |
-| Displej je zhasnutý, `SUPER + D` ho prepína | `karchi-display on\|off\|toggle\|status`, po štarte `karchi-display-off.service`, skratku drží `keyd` |
+| Displej je zhasnutý, `SUPER + D` ho prepína | `karchi-display on\|off\|toggle\|status`: vynútené zhasnutie konzoly, ktoré iný kláves nezruší; po štarte `karchi-display-off.service`, skratku drží `keyd` |
 | Wi-Fi a kábel | `iwd` (sieť z inštalátora v `/var/lib/iwd`), kábel cez `systemd-networkd`, mená cez `systemd-resolved` |
 | Tailscale | `tailscaled`; s auth kľúčom z inštalátora sa stroj pri prvom štarte prihlási sám (`--ssh`) |
 | fastfetch pri prihlásení | `/etc/profile.d/karchi-fastfetch.sh`, na konzole aj cez SSH |
@@ -24,7 +24,7 @@ Debianu, jeho súbory sú nastavenia.
 |---|---|
 | `pkg/control`, `pkg/root/` | balík `karchi-headless`; `root/` sa nainštaluje tak, ako je |
 | `iso/preseed.cfg` | odpovede pre inštalátor Debianu (všetko okrem toho, čo sa pýta človeka) |
-| `iso/questions`, `iso/templates` | naše štyri otázky: časové pásmo, Wi-Fi sieť a heslo, Tailscale auth key |
+| `iso/questions`, `iso/templates` | naše otázky: časové pásmo, Wi-Fi sieť a heslo, Tailscale auth key, disk |
 | `iso/late` | posledný krok inštalátora: balík z média, potom `post-install` s odpoveďami |
 | `iso/grub-entry.cfg` | jediná položka ponuky štartu |
 | `tools/sandbox.sh` | debianový userland bez roota (bubblewrap), v ňom beží zostavenie |
@@ -65,19 +65,32 @@ Zavádzacie záznamy (BIOS, UEFI, tabuľka oddielov pre USB kľúč) prepíše `
 ### Test vo VM
 
 `make vm-test` spustí jadro inštalátora priamo a odpovede, ktoré by písal človek, mu dá na príkazový riadok
-(`ANSWERS` v `tools/vm.py`). Inštalácia beží bez sieťovej karty. Potom nainštalovaný disk naštartuje, cez SSH
-spustí `tests/check-installed.sh`, stlačí `SUPER + D` na klávesnici VM, vytrhne napájanie a zopakuje to.
+(`ANSWERS` v `tools/vm.py`). Inštalácia beží bez sieťovej karty a ISO je pripojené ako USB kľúč: kľúč je tiež
+disk a inštalátor ho nesmie ponúknuť na prepísanie (keby ho nespoznal, zastane pri otázke na disk a brána padne).
+Potom nainštalovaný disk naštartuje, cez SSH spustí `tests/check-installed.sh` a na obrazovke VM zmeria, že je
+po štarte tmavá, že ju obyčajný kláves nerozsvieti a že ju `SUPER + D` rozsvieti a zhasne. Nakoniec vytrhne
+napájanie a zopakuje to.
 
 SSH a `sudo` bez hesla má len testovacia inštalácia: zapína ich `karchi/test-key=…` na príkazovom riadku jadra.
+
+Kľúč je vo VM zapisovateľný ako skutočný (Ventoy z kľúča len na čítanie nenaštartuje), no zápisy idú do vrstvy,
+ktorú QEMU po skončení zahodí (`snapshot=on`): súbor s ISO sa nezmení.
+
+Namerané 11. 10. 2026: inštalácia 99 s, 246 balíkov, 659 MB na disku, 252 MB pamäte po štarte, štart za 3,7 s.
+Strop v `tests/check-installed.sh` je prvý zelený beh + 15 %.
 
 Dialógy inštalátora brána nevidí. Tie sa overujú ručne:
 
 ```
-python3 -B tools/vm.py manual      # štart z ponuky ISO, dva disky, žiadne odpovede
-python3 -B tools/vm.py shot        # snímka obrazovky (PNG)
-python3 -B tools/vm.py key ret     # klávesy: ret, tab, down, alt-f4 (alt-f4 = log inštalátora)
+python3 -B tools/vm.py manual      # štart z kľúča s ISO cez jeho ponuku, dva disky, žiadne odpovede
+python3 -B tools/vm.py manual ~/.cache/karchi-os-headless-debian/vm/ventoy.img   # to isté z obrazu Ventoy kľúča
+python3 -B tools/vm.py shot        # snímka obrazovky (PNG), keď sa prestane meniť
+python3 -B tools/vm.py key ret     # klávesy: ret, tab, down, alt-f2 (konzola inštalátora), alt-f4 (jeho log)
 python3 -B tools/vm.py type text
 ```
+
+Obraz Ventoy kľúča sa na hostiteľovi bez roota vyrobiť nedá. Vznikol v testovacej VM (`vm.py up` s prázdnym
+obrazom ako druhým diskom, v nej `Ventoy2Disk.sh -I -g /dev/vdb` a ISO skopírované do `ISO/`).
 
 ## Inštalácia na skutočný stroj
 
@@ -93,8 +106,10 @@ Inštalátor sa pýta v tomto poradí, potom už nikoho nepotrebuje:
 4. časové pásmo (predvolené `Europe/Bratislava`);
 5. Wi-Fi sieť a heslo (prázdne = bez Wi-Fi);
 6. Tailscale auth key (prázdne = prihlásiť neskôr ručne);
-7. ktorý disk (len keď ich vidí viac; kľúč, z ktorého štartuje, je medzi nimi);
+7. ktorý disk, len keď má stroj viac diskov. Kľúč, z ktorého inštalátor beží, v zozname nie je;
 8. potvrdenie zápisu na disk. **Prepíše sa celý vybraný disk.** Predvolená odpoveď je „No“.
+
+Overené s Ventoy 1.1.17 (UEFI, GPT, „Boot in normal mode“).
 
 Po reštarte displej zhasne. `SUPER + D` ho rozsvieti, na konzole je prihlasovací riadok.
 
@@ -107,9 +122,18 @@ sudo apt update && sudo apt full-upgrade   # aktualizácie: Debian aj Tailscale
 
 ## Čo VM neoverí
 
-Skutočné pripojenie na Wi-Fi, zhasnutie panela notebooku, `SUPER + D` na skutočnej klávesnici, spínač veka
-a prihlásenie auth kľúčom. Na skutočnom stroji to ukáže `karchi-doctor`; `karchi-display` preto píše do oboch
-rozhraní (framebuffer aj podsvietenie).
+Skutočné pripojenie na Wi-Fi, zhasnutie podsvietenia panela notebooku, spínač veka a prihlásenie auth kľúčom.
+Na skutočnom stroji to ukáže `karchi-doctor`.
+
+Displej: `karchi-display off` zhasne konzolu vynútene (`setterm --blank force`), takže ju stlačenie klávesu
+nerozsvieti, a vypne podsvietenie (`bl_power`). Zápis do `/sys/class/graphics/fb0/blank` nestačí: zruší ho
+prvý stlačený kláves. Keď grafický ovládač prevezme obrazovku až po štarte služby, stav obnoví pravidlo udev
+(`90-karchi-display.rules`).
+
+`getty@tty1` má vypnuté `TTYVTDisallocate`: systemd inak pri štarte getty čistí obrazovku aj s históriou, jadro
+pri tom nanovo nastaví režim obrazovky a výstup sa zapne, hoci konzola ostáva „zhasnutá“. Pri štarte systému to
+bol pretek s `karchi-display-off.service`, po odhlásení na konzole by sa displej rozsvietil vždy.
+Test preto číta aj stav výstupu priamo z ovládača (`/sys/kernel/debug/dri/0/state`).
 
 Známy strop: stroj sa po vypnutí sám nezapne, to je vec firmvéru. Všetko po stlačení tlačidla prebehne bez obsluhy.
 
