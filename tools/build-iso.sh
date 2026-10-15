@@ -1,8 +1,9 @@
 #!/bin/bash
 # Builds the ISO, inside the sandbox: tools/sandbox.sh /repo/tools/build-iso.sh   (make iso)
 # Debian's official netinst ISO stays as it is except for three things: the answers (iso/preseed.cfg) inside
-# the installer's initrd, a boot menu with one entry, and /karchi with our scripts and the packages the
-# netinst lacks. Result: /cache/out/<name>.iso, and next to it the installer's kernel and initrd for the test.
+# the installer's initrd, a boot menu with one entry, and /karchi with our scripts, our packages and the
+# packages the netinst lacks. Result: /cache/out/<name>.iso, and next to it the installer's kernel and initrd
+# for the test.
 set -euo pipefail
 source /repo/build.conf
 netinst=/cache/dl/debian-$DEBIAN_VERSION-amd64-netinst.iso
@@ -27,21 +28,30 @@ rm -rf "$work"
 mkdir -p "$pool" "$apt"/{lists,archives}/partial "$stage"/{install.amd,boot/grub} /cache/out
 debconf-set-selections --checkonly /repo/iso/preseed.cfg
 
-# --- our package: the files of pkg/root as they are, its dependencies are the system ------------------------
+# --- our packages --------------------------------------------------------------------------------------------
+# karchi-headless: the files of pkg/root as they are, its dependencies are the system. Its parts laptop-server
+# and reboot-when-idle are projects of their own (parts/, git submodules), built by their own make deb.
 package=$work/karchi-headless
 mkdir -p "$package/DEBIAN"
 cp -a /repo/pkg/root/. "$package/"
 sed "s/@VERSION@/$version/" /repo/pkg/control > "$package/DEBIAN/control"
+install -m 755 /repo/pkg/preinst /repo/pkg/postinst /repo/pkg/postrm "$package/DEBIAN/"
 (cd "$package" && find etc -type f -printf '/%p\n' > DEBIAN/conffiles)
 dpkg-deb --root-owner-group --build "$package" "$pool/karchi-headless_${version}_all.deb" > /dev/null
-depends=$(dpkg-deb -f "$pool"/karchi-headless_*.deb Depends | tr -d ,)
+for part in /repo/parts/*/; do
+  [[ -e $part/Makefile ]] || { echo "${part%/} is empty: git submodule update --init" >&2; exit 1; }
+  make -s -C "$part" deb BUILD="$work/parts/$(basename "$part")" OUT="$pool" > /dev/null
+done
+index() { (cd "$pool" && apt-ftparchive packages . > Packages && apt-ftparchive release . > Release); }
+index
 
 # --- the packages the netinst lacks -------------------------------------------------------------------------
-# apt is asked what installing ours takes on a system that has nothing at all; what the netinst already
-# carries in the very same version is then left out. Whatever the installed base turns out to be, apt on
-# the target finds every dependency on the medium.
+# apt is asked what installing karchi-headless takes on a system that has nothing at all, our packages
+# coming from the pool; what the netinst already carries in the very same version is then left out. Whatever
+# the installed base turns out to be, apt on the target finds every dependency on the medium.
 /usr/lib/apt/apt-helper download-file "https://pkgs.tailscale.com/stable/debian/$DEBIAN_SUITE.noarmor.gpg" "$apt/tailscale.gpg"
 cat > "$apt/sources.list" << EOF
+deb [trusted=yes] file:$pool ./
 deb [signed-by=/usr/share/keyrings/debian-archive-keyring.pgp] http://deb.debian.org/debian $DEBIAN_SUITE main non-free-firmware
 deb [signed-by=$apt/tailscale.gpg] https://pkgs.tailscale.com/stable/debian $DEBIAN_SUITE main
 EOF
@@ -52,14 +62,13 @@ aptget() {
     -o Dir::Etc::sourceparts=- "$@"
 }
 aptget update
-# shellcheck disable=SC2086
-aptget install -y --download-only $depends > "$work/apt-install.log"
+aptget install -y --download-only karchi-headless > "$work/apt-install.log"
 xorriso -indev "$netinst" -find /pool -name '*.deb' 2> /dev/null | sed "s|.*/||; s|'$||" | sort -u > "$work/on-netinst"
 for deb in "$apt"/archives/*.deb; do
   name=$(basename "$deb" | sed 's/_[0-9]*%3a/_/')  # apt keeps the epoch in the file name, a pool does not
   grep -qxF "$name" "$work/on-netinst" || cp "$deb" "$pool/$name"
 done
-(cd "$pool" && apt-ftparchive packages . > Packages)
+index
 
 # --- the installer --------------------------------------------------------------------------------------------
 cp /repo/iso/{questions,late,templates} "$stage/karchi/"
@@ -111,4 +120,4 @@ cp -f "$work/vmlinuz" "$stage/install.amd/initrd.gz" /cache/out/  # -f: the kern
 
 echo "packages added to the netinst: $(ls "$pool"/*.deb | wc -l), $(du -sh "$pool" | cut -f1)"
 ls "$pool" | sed -n 's/_.*//p' | paste -sd' ' | fold -s -w 110
-echo "ISO: ~/.cache/karchi-os-headless-debian/out/${out##*/}, $(du -h "$out" | cut -f1)"
+echo "ISO: $KARCHI_CACHE/out/${out##*/}, $(du -h "$out" | cut -f1)"

@@ -266,7 +266,7 @@ def screen_lit(qmp):
 
 
 def display_keys():
-    """The screen itself, not what karchi-display says about it: off after the start, no key but SUPER+D
+    """The screen itself, not what laptop-server display says about it: off after the start, no key but SUPER+D
     brings it back, SUPER+D turns it off again."""
     qmp = QMP()
     failed = 0
@@ -275,7 +275,7 @@ def display_keys():
                             ('SUPER+D turns it on', ['meta_l-d'], True),
                             ('SUPER+D turns it off', ['meta_l-d'], False)):
         press(qmp, *keys, pause=1)
-        state = ssh('karchi-display status', capture_output=True, text=True).stdout.strip()
+        state = ssh('laptop-server display status', capture_output=True, text=True).stdout.strip()
         ok = screen_lit(qmp) == lit and state == ('on' if lit else 'off')
         print(f'{"ok  " if ok else "FAIL"}  {name}')
         failed |= not ok

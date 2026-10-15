@@ -3,7 +3,7 @@
 #   ok    works
 #   WARN  works, but something is still to be done by hand (the line says what)
 #   FAIL  broken; the exit code is then 1
-# It changes nothing.
+# It changes nothing. Its parts check themselves too: laptop-server check, reboot-when-idle status.
 set -u
 failed=0
 
@@ -35,31 +35,18 @@ all_units() {  # all_units is-active|is-enabled <unit...>: systemctl alone is co
   done
 }
 
-logind() { busctl "$1" org.freedesktop.login1 /org/freedesktop/login1 "${@:2}"; }
-
-lid_ignored() {
-  local property value
-  for property in HandleLidSwitch HandleLidSwitchExternalPower HandleLidSwitchDocked; do
-    value=$(logind get-property org.freedesktop.login1.Manager "$property") || return 1
-    [[ $value == 's "ignore"' ]] || { echo "$property is $value"; return 1; }
-  done
+automatic_updates() {  # unattended-upgrades runs every day and leaves the reboot to reboot-when-idle
+  local lists upgrade reboot
+  eval "$(apt-config shell lists APT::Periodic::Update-Package-Lists upgrade APT::Periodic::Unattended-Upgrade \
+    reboot Unattended-Upgrade::Automatic-Reboot)"
+  [[ ${lists:-0} != 0 && ${upgrade:-0} != 0 ]] || { echo 'APT::Periodic is off'; return 1; }
+  [[ ${reboot:-false} == false ]] || { echo 'unattended-upgrades reboots by itself (Automatic-Reboot)'; return 1; }
+  all_units is-enabled apt-daily.timer apt-daily-upgrade.timer
 }
 
-never_sleeps() {
-  local method answer
-  for method in CanSuspend CanHibernate; do
-    answer=$(logind call org.freedesktop.login1.Manager "$method") || return 1
-    [[ $answer != 's "yes"' ]] || { echo "$method says yes"; return 1; }
-  done
-}
-
+echo 'the system'
 check 'no failed service' no_failed_units
-check 'services run: network, Wi-Fi, Tailscale, SUPER+D' \
-  all_units is-active systemd-networkd systemd-resolved iwd tailscaled keyd
-check 'the lid does nothing' lid_ignored
-check 'the machine never sleeps' never_sleeps
-check 'swap in compressed memory' grep -q '^/dev/zram' /proc/swaps
-check 'the display answers karchi-display' grep -qx -e on -e off <(karchi-display status)
+check 'services run: network, Wi-Fi, Tailscale' all_units is-active systemd-networkd systemd-resolved iwd tailscaled
 
 if ip route get 1.1.1.1 > /dev/null 2>&1; then
   printf 'ok    %s\n' "network: $(ip -4 -o route get 1.1.1.1 | sed 's/.* dev \([^ ]*\).* src \([^ ]*\).*/\2 on \1/')"
@@ -73,5 +60,16 @@ case $(tailscale status --json 2> /dev/null | sed -n 's/.*"BackendState": *"\([^
   *) printf 'FAIL  %s\n' 'Tailscale does not answer'; failed=1 ;;
 esac
 
-printf '      display is %s (SUPER+D)\n' "$(karchi-display status)"
+echo 'the laptop (laptop-server check)'
+laptop-server check || failed=1
+
+echo 'updates and reboots (reboot-when-idle status)'
+check 'security updates install themselves, every day' automatic_updates
+check 'the nightly reboot waits for agents' all_units is-active reboot-when-idle.timer
+while read -r line; do
+  warn "$line"
+done < <(reboot-when-idle status 2> /dev/null | awk '/^needs a look:/ { look = 1; next } /^[^ ]/ { look = 0 } look { sub(/^ +/, ""); print }')
+if [[ -d ~/.claude ]] && ! grep -qs 'reboot-when-idle hook' ~/.claude/settings.json; then
+  warn 'Claude Code does not tell reboot-when-idle when it works: merge /usr/share/reboot-when-idle/claude-code-hooks.json into ~/.claude/settings.json'
+fi
 exit $failed

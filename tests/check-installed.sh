@@ -70,8 +70,8 @@ lid_and_sleep() {
   [[ $value != 's "yes"' ]] || { echo 'the machine could suspend'; return 1; }
 }
 
-display_off() {  # as karchi-display says, as the console says (0 = not blanked), and as the video driver says
-  [[ $(karchi-display status) == off ]] || { echo "karchi-display status: $(karchi-display status)"; return 1; }
+display_off() {  # as laptop-server says, as the console says (0 = not blanked), and as the video driver says
+  [[ $(laptop-server display status) == off ]] || { echo "laptop-server display status: $(laptop-server display status)"; return 1; }
   [[ $(sudo sh -c 'setterm --term linux --blank < /dev/tty0') != 0 ]] || { echo 'the console is not blanked'; return 1; }
   # The console can count as blanked over an output that something has turned on again behind its back.
   sudo grep -q 'active=1' /sys/kernel/debug/dri/0/state && { echo 'the video output is on'; return 1; }
@@ -97,6 +97,26 @@ apt_sources() {  # nothing of the installation medium is left, and the network s
   apt-cache policy tailscale | grep -q 'pkgs.tailscale.com' || { echo 'no Tailscale repository'; return 1; }
 }
 
+reboot_on_trial() {  # GRUB keeps the kernel that works and can start a new one once (reboot-when-idle)
+  local entry
+  grep -qw 'panic=10' /proc/cmdline || { cat /proc/cmdline; return 1; }
+  entry=$(sudo grub-editenv list | sed -n 's/^saved_entry=//p')
+  [[ $entry == *"gnulinux-$(uname -r)-advanced-"* ]] || { echo "saved_entry=$entry"; return 1; }
+  [[ $(systemctl show -p Result --value reboot-when-idle-trial) == success ]] || { systemctl status reboot-when-idle-trial | tail -5; return 1; }
+  sudo reboot-when-idle status | grep -q '^nothing is working now' || { sudo reboot-when-idle status; return 1; }
+}
+
+automatic_updates() {  # unattended-upgrades every day, without its own reboot
+  local lists upgrade reboot
+  eval "$(apt-config shell lists APT::Periodic::Update-Package-Lists upgrade APT::Periodic::Unattended-Upgrade \
+    reboot Unattended-Upgrade::Automatic-Reboot)"
+  [[ $lists == 1 && $upgrade == 1 && $reboot == false ]] || { echo "lists=$lists upgrade=$upgrade reboot=$reboot"; return 1; }
+}
+
+battery_limit_ready() {  # the VM has no battery: the service ran and found nothing to do
+  [[ $(systemctl show -p Result --value laptop-server-battery) == success && -z $(laptop-server battery) ]]
+}
+
 budget() {
   [[ $packages -le $MAX_PACKAGES && $disk -le $MAX_DISK_MB && $memory -le $MAX_MEMORY_MB ]] \
     || { echo "allowed: $MAX_PACKAGES packages, $MAX_DISK_MB MB on disk, $MAX_MEMORY_MB MB of memory"; return 1; }
@@ -115,7 +135,7 @@ check 'name of the machine (the default of the installer)' test "$(hostname)" = 
 check 'time zone from our question' test "$(readlink -f /etc/localtime)" = /usr/share/zoneinfo/Europe/Prague
 check 'root is locked, the user has sudo' root_locked
 check 'services run' all_units is-active systemd-networkd systemd-resolved systemd-timesyncd iwd tailscaled keyd
-check 'services start with the system' all_units is-enabled systemd-networkd systemd-resolved systemd-timesyncd iwd tailscaled keyd karchi-display-off karchi-tailscale-up
+check 'services start with the system' all_units is-enabled systemd-networkd systemd-resolved systemd-timesyncd iwd tailscaled keyd karchi-tailscale-up laptop-server-display-off laptop-server-battery reboot-when-idle.timer reboot-when-idle-boot reboot-when-idle-trial
 check 'the start does not wait for a cable' not systemctl is-enabled --quiet systemd-networkd-wait-online
 check 'the lid does nothing, the machine never sleeps' lid_and_sleep
 check 'Wi-Fi network from the installer is known to iwd' wifi_from_installer
@@ -124,6 +144,9 @@ check 'fastfetch greets at login' grep -q 'OS' <(bash -lic true 2> /dev/null)
 check 'the display went off after the start' display_off
 check 'the console keyboard is Slovak QWERTY, the font has its letters' keyboard
 check 'the boot menu does not wait' sudo grep -q '^ *set timeout=0' /boot/grub/grub.cfg
+check 'GRUB keeps the kernel that works, a new one starts on trial' reboot_on_trial
+check 'security updates install themselves, without their own reboot' automatic_updates
+check 'the battery service ran (no battery in a VM)' battery_limit_ready
 check 'names resolve through systemd-resolved' getent hosts deb.debian.org
 check 'packages come from the network: Debian and Tailscale answer' apt_sources
 check 'karchi-doctor finds nothing broken' karchi-doctor

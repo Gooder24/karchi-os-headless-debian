@@ -23,9 +23,8 @@ if [[ ${1:-} == --self-test ]]; then
   exit
 fi
 
-# sshd is not among them: the way in is Tailscale SSH.
-systemctl enable systemd-networkd systemd-resolved systemd-timesyncd iwd tailscaled keyd \
-  karchi-display-off karchi-tailscale-up
+# sshd is not among them: the way in is Tailscale SSH. laptop-server and reboot-when-idle enable their own.
+systemctl enable systemd-networkd systemd-resolved systemd-timesyncd iwd tailscaled karchi-tailscale-up
 # A machine with no cable would wait two minutes for one at every start.
 systemctl disable systemd-networkd-wait-online
 ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
@@ -63,7 +62,7 @@ rm -f /etc/apt/apt.conf.d/00InstallRecommends
 sed -i 's/^CODESET=.*/CODESET="Lat2"/' /etc/default/console-setup
 setupcon --save-only
 
-update-grub  # GRUB_TIMEOUT=0 of /etc/default/grub.d/karchi.cfg
+update-grub  # laptop-server's GRUB_TIMEOUT=0, reboot-when-idle's saved default and panic=10
 
 # Only the test in a VM gives a key (karchi/test-key= on the kernel command line): it then has a way in
 # and sudo without a password.

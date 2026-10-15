@@ -1,14 +1,14 @@
 #!/bin/bash
 # Runs a command in a Debian userland without root: tools/sandbox.sh <command...>
-# The build needs apt, dpkg-deb and xorriso, its check a clock that lies (faketime). The host is Arch and has
-# none of them, and root on it asks for a password; the official debian:trixie-slim root filesystem under
-# bubblewrap gives them all.
-# Inside, the repository is /repo (read-only) and the cache is /cache.
+# The build needs apt, dpkg-deb, make and xorriso, its check a clock that lies (faketime). The host need not have
+# them (Arch has none), and root on it asks for a password; the official debian:trixie-slim root filesystem under
+# bubblewrap gives them all, on any Linux.
+# Inside, the repository is /repo (read-only) and the cache is /cache; KARCHI_CACHE says where /cache is outside.
 set -euo pipefail
 repo=$(dirname "$(dirname "$(realpath "$0")")")
 cache=${KARCHI_CACHE:-$HOME/.cache/karchi-os-headless-debian}
 root=$cache/sandbox
-tools='xorriso cpio dpkg-dev apt-utils xz-utils ca-certificates faketime'
+tools='xorriso cpio dpkg-dev apt-utils xz-utils ca-certificates faketime make'
 
 enter() {
   # CAP_SYS_CHROOT: the build runs the installer's keyboard step inside the installer's own userland.
@@ -16,7 +16,7 @@ enter() {
     --bind "$root" / --proc /proc --dev /dev --tmpfs /tmp \
     --ro-bind /etc/resolv.conf /etc/resolv.conf --ro-bind "$repo" /repo --bind "$cache" /cache \
     --setenv PATH /usr/sbin:/usr/bin:/sbin:/bin --setenv HOME /root --setenv LC_ALL C.UTF-8 \
-    --setenv DEBIAN_FRONTEND noninteractive --chdir /repo "$@"
+    --setenv DEBIAN_FRONTEND noninteractive --setenv KARCHI_CACHE "$cache" --chdir /repo "$@"
 }
 
 if [[ $(cat "$root/.ready" 2> /dev/null) != "$tools" ]]; then

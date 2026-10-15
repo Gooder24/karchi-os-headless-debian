@@ -1,12 +1,13 @@
 Package: karchi-headless
 Version: @VERSION@
 Architecture: all
-Maintainer: karchi <karchi@localhost>
+Maintainer: Gooder24 <162874774+Gooder24@users.noreply.github.com>
 Section: metapackages
 Priority: optional
-Depends: systemd-resolved, systemd-timesyncd, libpam-systemd, iwd, wireless-regdb, tailscale, tailscale-archive-keyring, fastfetch, keyd, systemd-zram-generator, console-setup, btrfs-progs, sudo, openssh-client, ca-certificates, curl, nano, less
-Description: KarchiOS Headless on Debian: the whole system as one package
- A laptop as a server without a desktop. The lid does nothing and the machine
- never sleeps; the display is off until SUPER+D; Wi-Fi through iwd, Tailscale,
- fastfetch at login. Its dependencies are everything the system has beyond
- Debian's base, its files are the settings.
+Depends: laptop-server, reboot-when-idle, unattended-upgrades, systemd-resolved, systemd-timesyncd, libpam-systemd, iwd, wireless-regdb, tailscale, tailscale-archive-keyring, fastfetch, console-setup, btrfs-progs, sudo, openssh-client, ca-certificates, curl, nano, less
+Description: KarchiOS Headless on Debian: a laptop that serves AI agents
+ Everything the system has beyond Debian's base, as one package. Its parts:
+ laptop-server (the lid, sleep, a dark display, the battery limit, zram),
+ reboot-when-idle (updates and reboots that wait for agents), and its own
+ files: Wi-Fi through iwd, cable through systemd-networkd, Tailscale SSH,
+ automatic security updates, a health check (karchi-doctor), fastfetch.

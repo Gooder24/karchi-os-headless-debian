@@ -1,0 +1,8 @@
+#!/bin/sh
+# Settings that moved to laptop-server (2026-10-15) go; so does the start link of the old display service,
+# whose file went with the upgrade. Installing from the ISO does the rest (/usr/lib/karchi/post-install).
+set -e
+dpkg-maintscript-helper rm_conffile /etc/keyd/karchi.conf 2026.10.15~ karchi-headless -- "$@"
+dpkg-maintscript-helper rm_conffile /etc/default/grub.d/karchi.cfg 2026.10.15~ karchi-headless -- "$@"
+[ "$1" = configure ] || exit 0
+rm -f /etc/systemd/system/multi-user.target.wants/karchi-display-off.service

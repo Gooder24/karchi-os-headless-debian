@@ -1,0 +1,5 @@
+#!/bin/sh
+# Settings that moved to laptop-server (2026-10-15) leave this package's list of settings.
+set -e
+dpkg-maintscript-helper rm_conffile /etc/keyd/karchi.conf 2026.10.15~ karchi-headless -- "$@"
+dpkg-maintscript-helper rm_conffile /etc/default/grub.d/karchi.cfg 2026.10.15~ karchi-headless -- "$@"

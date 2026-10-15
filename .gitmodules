@@ -1,0 +1,6 @@
+[submodule "parts/laptop-server"]
+	path = parts/laptop-server
+	url = https://github.com/Gooder24/laptop-server.git
+[submodule "parts/reboot-when-idle"]
+	path = parts/reboot-when-idle
+	url = https://github.com/Gooder24/reboot-when-idle.git

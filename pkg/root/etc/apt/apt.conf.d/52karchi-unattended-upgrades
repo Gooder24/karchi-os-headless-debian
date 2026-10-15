@@ -1,0 +1,7 @@
+// Debian's security and stable updates install themselves every day (unattended-upgrades). The reboot a new
+// kernel needs is reboot-when-idle's: at night, and only while no agent works. unattended-upgrades' own
+// reboot would come at a fixed hour, whatever runs.
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+Unattended-Upgrade::Automatic-Reboot "false";

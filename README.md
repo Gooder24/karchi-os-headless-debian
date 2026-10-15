@@ -1,179 +1,288 @@
 # KarchiOS Headless (Debian)
 
-Notebook ako server bez plochy, na Debiane 13. Jedno ISO, ktoré ho nainštaluje **bez siete**; robí to isté ako
-`karchi-os-headless` na Archu (plán `~/.claude/plans/okej-vie-teda-z-lohova-tender-puppy.md`, časť B):
+A server OS for old laptops that run AI coding agents day and night. One ISO installs Debian 13 **without a
+network**; after that the machine starts by itself, joins the network and your tailnet by itself, updates
+itself, reboots only while no agent works, and tells you what is wrong. Nobody has to sit at it again.
 
-| Čo | Ako |
+It is Debian 13 plus three layers, each of which does one job and can be used on its own:
+
+```
+karchi-headless              this repository: the installer ISO, the network, Tailscale, the health check
+ ├─ laptop-server            github.com/Gooder24/laptop-server       the laptop behaves like a server
+ ├─ reboot-when-idle         github.com/Gooder24/reboot-when-idle    updates and reboots that wait for agents
+ └─ Debian 13 (trixie)       base system, unattended-upgrades, iwd, systemd-networkd, Tailscale
+```
+
+## What makes a good server OS for an agent box
+
+An "agent box" is a machine where Claude Code, Codex and friends work for hours unattended: long turns,
+background builds, dev servers, scheduled prompts. It sits in a corner, reached only over the network. What it
+needs, and which part gives it:
+
+| the server must | so that | given by |
+|---|---|---|
+| install from one stick, with no network and three questions | setting up the next laptop takes 5 minutes, also where Wi-Fi needs a password typed in | the installer ISO (this repo) |
+| start by itself and come back by itself | a power cut, a kernel update or a hang ends with the machine back online, not waiting at a menu, a lid or a dead clock battery | laptop-server, reboot-when-idle, this repo |
+| be reachable from anywhere, without opening ports | agents and you reach it over SSH from any network | Tailscale with Tailscale SSH (this repo) |
+| never stop because it is a laptop | a closed lid, an idle timer or a stray suspend does not take it offline | laptop-server |
+| not wear itself out | the screen is dark, the battery stays at 80 %, the SSD is not swapped on | laptop-server |
+| stay patched without killing work | security fixes come every day; the reboot a new kernel needs waits until no agent turn, background task or build runs | unattended-upgrades + reboot-when-idle |
+| survive a bad kernel | a new kernel boots once on trial; without network, after a crash or a hang it goes back to the old one | reboot-when-idle |
+| be light | more of an old laptop's memory is left for agents and builds | Debian's base, no desktop: 696 MB on disk, 263 MB of memory after the start, started in 3.8 s |
+| say what is wrong | one command over SSH instead of a monitor and a keyboard | `karchi-doctor` |
+
+## The parts
+
+### 1. Debian 13 and the installer ISO (this repository)
+
+Why Debian: stable releases with security updates for years, a signed boot loader (it installs with Secure
+Boot on), `debian-installer` that knows partitioning, firmware and boot loaders on any x86 laptop, and `apt`
+updates that work from the first day.
+
+The ISO is Debian's official netinst with three changes (see [How the ISO is made](#how-the-iso-is-made)): the
+installer's answers, a boot menu with one entry, and a folder with our packages and every package the netinst
+lacks. It installs offline, asks three things up front and then needs nobody:
+
+- the machine's name, the user and their password (root stays locked; the user has `sudo`);
+- the time zone, the Wi-Fi network and its password, and a Tailscale auth key, each of which may stay empty;
+- where to install: a whole disk, or only the free space next to another system (Windows stays).
+
+The keyboard is Slovak QWERTY, in the installer and in the installed system (`iso/preseed.cfg`; change it there
+for your own build). The root file system is btrfs with one subvolume `@rootfs`, without disk encryption, so the
+machine starts without anyone typing a passphrase. Firmware for Intel graphics and Wi-Fi and the CPU microcode
+are installed only where that hardware is.
+
+### 2. laptop-server: the laptop behaves like a server
+
+[github.com/Gooder24/laptop-server](https://github.com/Gooder24/laptop-server), a package of its own.
+
+| | why |
 |---|---|
-| Veko nič nerobí | `logind.conf.d`: `HandleLidSwitch*=ignore` |
-| Stroj nikdy nespí | `sleep.conf.d`: `AllowSuspend=no`, `AllowHibernation=no` |
-| Po zapnutí nabehne sám | disk bez šifrovania, ponuka štartu nečaká (`GRUB_TIMEOUT=0`), prihlasovací riadok na konzole |
-| Displej je zhasnutý, `SUPER + D` ho prepína | `karchi-display on\|off\|toggle\|status`: vynútené zhasnutie konzoly, ktoré iný kláves nezruší; po štarte `karchi-display-off.service`, skratku drží `keyd` |
-| Wi-Fi a kábel | `iwd` (sieť z inštalátora v `/var/lib/iwd`), kábel cez `systemd-networkd`, mená cez `systemd-resolved` |
-| Tailscale | `tailscaled`; s auth kľúčom z inštalátora sa stroj pri prvom štarte prihlási sám (`--ssh`) |
-| fastfetch pri prihlásení | `/etc/profile.d/karchi-fastfetch.sh`, na konzole aj cez SSH |
-| Swap v pamäti | `systemd-zram-generator`, zstd |
-| Klávesnica na konzole | slovenská QWERTY (`sk`, variant `qwerty`), písmo `Lat2`; platí pre každého vrátane roota |
-| Kontrola zdravia | `karchi-doctor` |
+| the lid does nothing | close it, stack it, put it on a shelf: it keeps serving |
+| the machine never sleeps | not the lid, not an idle timer, not a stray `systemctl suspend` |
+| the display is dark after the start, `SUPER + D` switches it | the panel is the biggest power draw and wears out; at the machine, one key gives the console |
+| charging stops at 80 % | a lithium battery kept full for years loses its capacity; at 80 % it lasts and still covers a power cut |
+| swap in compressed memory (zram) | old laptops have little memory; no swap partition wears the SSD |
+| the boot menu does not wait | after a power cut the machine is back in seconds |
 
-Všetko uvedené je v jedinom balíku `karchi-headless` (`pkg/`): jeho závislosti sú celý systém nad základom
-Debianu, jeho súbory sú nastavenia.
+`laptop-server check` tells whether all of that holds.
 
-## Čo je kde
+### 3. The network that needs nobody (this repository)
 
-| Cesta | Čo |
+| | why |
 |---|---|
-| `pkg/control`, `pkg/root/` | balík `karchi-headless`; `root/` sa nainštaluje tak, ako je |
-| `iso/preseed.cfg` | odpovede pre inštalátor Debianu (všetko okrem toho, čo sa pýta človeka) |
-| `iso/sk-qwerty.ekmap` | slovenská QWERTY pre inštalátor: jeho vlastná tabuľka máp tento variant nemá |
-| `iso/questions`, `iso/templates` | naše otázky: časové pásmo, Wi-Fi sieť a heslo, Tailscale auth key, disk |
-| `iso/late` | posledný krok inštalátora: balík z média, potom `post-install` s odpoveďami |
-| `iso/grub-entry.cfg` | jediná položka ponuky štartu |
-| `tools/sandbox.sh` | debianový userland bez roota (bubblewrap), v ňom beží zostavenie |
-| `tools/build-iso.sh` | zostavenie ISO |
-| `tools/vm.py` | testovacia VM: inštalácia, štart, kontroly, klávesy, snímky |
-| `tests/check-installed.sh` | kontroly nainštalovaného systému |
-| `tests/check-medium.sh` | kontrola hotového ISO: všetko, čo si `iso/late` pýta, je na médiu, aj so zlými hodinami |
-| `build.conf` | verzia a súčet netinst ISO, veľkosť testovacej VM |
+| Wi-Fi through `iwd`, which gives itself an address; the network from the installer is in `/var/lib/iwd` | `iwd` reconnects by itself after an outage, with no NetworkManager or desktop agent |
+| a cable through `systemd-networkd`, any `en*` interface, DHCP | plug in a cable or a USB adapter and it works, no setting |
+| names through `systemd-resolved` | one resolver for Wi-Fi, cable and Tailscale's MagicDNS |
+| the start does not wait for a cable (`systemd-networkd-wait-online` is off) | a machine on Wi-Fi does not wait two minutes at every start |
+| Tailscale; with an auth key from the installer the machine joins your tailnet at its first start, with Tailscale SSH on | reach it from anywhere, with no open port and no SSH keys to manage; the key is deleted once used |
+| no `sshd` | the way in is Tailscale SSH: nothing listens on the local network |
 
-Veľké súbory sú mimo repa v `~/.cache/karchi-os-headless-debian`: `dl/` (netinst, rootfs pieskoviska),
-`sandbox/`, `build/`, `out/` (hotové ISO, jadro a initrd inštalátora pre test), `vm/` (disk testovacej VM, logy).
+### 4. Updates and reboots that wait for agents
 
-## Zostavenie a test
+[github.com/Gooder24/reboot-when-idle](https://github.com/Gooder24/reboot-when-idle), a package of its own,
+and `unattended-upgrades` set up by this repository (`/etc/apt/apt.conf.d/52karchi-unattended-upgrades`).
+
+- Debian's security and stable updates install themselves every day. `unattended-upgrades` would also reboot
+  at a fixed hour, whatever runs; that is off.
+- Every night between 03:00 and 04:00 `reboot-when-idle` looks whether a reboot is due (a newer kernel, a
+  package asked for it, 30 days up) and whether anything works: an agent turn (Claude Code hooks), a
+  conversation that paused a moment ago, an agent's background task, whatever runs in a login session, a job
+  under `reboot-when-idle hold`, apt, someone typing. It reboots only when nothing does, and tries again for
+  three hours, then the next night.
+- A new kernel boots once, on trial (`GRUB_DEFAULT=saved`, `panic=10`, the hardware watchdog): if the network
+  does not come up with it, or it crashes or hangs, the machine goes back to the kernel that worked.
+
+For Claude Code to say when it works, merge `/usr/share/reboot-when-idle/claude-code-hooks.json` into
+`~/.claude/settings.json` of the user the agents run as; `karchi-doctor` reminds you when it is missing.
+
+### 5. The health check (this repository)
+
+`karchi-doctor`, on the console or over SSH, as yourself: failed services, the network and Tailscale, then
+`laptop-server check` and what `reboot-when-idle status` says needs a look. `ok`, `WARN` with what to do by hand,
+`FAIL` with exit code 1.
+
+### 6. KarchiOS touches (this repository)
+
+`fastfetch` at every interactive login, on the console and over SSH; the Slovak QWERTY keyboard with the
+`Lat2` console font; the machine name `karchi-server` offered by the installer. Change these for your own build.
+
+## Install on a real machine
+
+Copy the ISO onto a Ventoy stick next to the others (`make usb DIR=/run/media/$USER/Ventoy/ISO`, nothing is
+erased), or write it to a stick of its own. The machine has to start through **UEFI**; Secure Boot may stay on
+(Debian's boot loader is signed).
+
+The installer asks in this order, then needs nobody:
+
+1. the name of the machine (default `karchi-server`);
+2. the user's name and password (root stays locked, the user has `sudo`);
+3. the time zone (default `Europe/Bratislava`);
+4. the Wi-Fi network and its password (empty = no Wi-Fi);
+5. the Tailscale auth key (empty = log in later by hand);
+6. where to install, when there is a choice: every disk as a whole (`ERASE the whole disk`) and, when a disk
+   with partitions has at least 10 GB unallocated, also `only its N GB of free space`. The second choice comes
+   first in the list, takes only the largest contiguous unallocated stretch and leaves existing partitions
+   alone (Windows, for example). The stick the installer runs from is not in the list;
+7. the confirmation to write to the disk. For a whole disk **the whole chosen disk is overwritten** and the list
+   shows partitions #1 and #2; for free space it shows only new partitions with higher numbers. The default
+   answer is "No".
+
+Next to another system: the space has to be unallocated (not an empty volume). The boot loader goes into the
+existing EFI partition, into the folder `debian`; the other system's files stay. The machine then starts into
+KarchiOS without a menu; the other system is started from the firmware's boot menu.
+
+The keyboard is not asked: it is Slovak QWERTY already during the installation (so the password is typed the
+same way as later on the console; digits are with Shift) and in the installed system. The installer's own list
+offers only Slovak QWERTZ, so the answer is given in advance. Another keyboard: `sudo dpkg-reconfigure
+keyboard-configuration`.
+
+Tested with Ventoy 1.1.17 (UEFI, GPT, "Boot in normal mode").
+
+When the installer stops with an error, `Alt + F4` shows its log (back with `Alt + F1`); the lines with `E:` say
+why.
+
+After the restart the display goes dark. `SUPER + D` lights it; the console shows a login prompt.
 
 ```
-make check      # statické kontroly, sekundy
-make iso        # ISO do ~/.cache/karchi-os-headless-debian/out; prvý raz stiahne asi 0,9 GB
-make vm-test    # inštalácia bez siete do čistej VM, dva štarty s výpadkom napájania, kontroly
+karchi-doctor                               what works and what is still to be done by hand
+sudo tailscale up --ssh                     if the installer got no auth key
+iwctl station wlan0 connect <network>       Wi-Fi afterwards
+reboot-when-idle status                     is a reboot due, and what would hold it back now
 ```
 
-Nič z toho nepotrebuje root. Hostiteľ (Arch) nemá `apt`, `dpkg-deb` ani `xorriso`, preto zostavenie beží
-v oficiálnom `debian:trixie-slim` pod bubblewrapom; ten si `tools/sandbox.sh` pri prvom behu stiahne sám.
+Updates install themselves; `sudo apt update && sudo apt full-upgrade` does it at once.
 
-### Ako ISO vzniká
-
-Oficiálny netinst Debianu ostáva taký, aký je, až na tri veci:
-
-1. Do initrd inštalátora sa pripojí `preseed.cfg` (inštalátor ho načíta pred prvou otázkou) a dva jeho súbory
-   doplnené o slovenskú QWERTY: tabuľka klávesových máp a zoznam klávesníc, ktoré jeho otázka pozná. Odpoveď, ktorá
-   v tom zozname nie je, inštalátor potichu nahradí predvolenou `us` a tú potom zdedí aj nainštalovaný systém.
-   Zostavenie preto krok klávesnice spustí v userlande samotného inštalátora a skončí chybou, ak z neho klávesnica
-   z `preseed.cfg` nevyjde nezmenená.
-2. Ponuka štartu má jednu položku a po 5 sekundách ju spustí sama.
-3. Pribudne priečinok `/karchi`: naše skripty a `pool/` s balíkmi, ktoré netinst nemá (`iwd`, `systemd-resolved`,
-   `keyd`, `fastfetch`, `systemd-zram-generator`, `tailscale` a ich závislosti) a balík `karchi-headless`.
-
-Zoznam chýbajúcich balíkov sa neudržiava ručne: `apt` vypočíta, čo by inštalácia `karchi-headless` potrebovala
-na úplne prázdnom systéme, a z toho sa vynechá všetko, čo netinst už nesie v tej istej verzii. Tailscale sa berie
-z `pkgs.tailscale.com` (podpis overuje `apt`), ostatné z `deb.debian.org`.
-
-Zavádzacie záznamy (BIOS, UEFI, tabuľka oddielov pre USB kľúč) prepíše `xorriso` v tej istej podobe, akú má netinst.
-
-`make iso` končí kontrolou `tests/check-medium.sh`: z hotového ISO vyberie príkazy `apt`, ktoré spúšťa `iso/late`,
-a spustí ich v pieskovisku s hodinami nastavenými na rok 2013. Musia prejsť len z média. Starý notebook
-s vybitou batériou hodín štartuje v minulosti a `apt` vtedy odmietne súbor `Release` novší než jeho hodiny
-(„not valid yet“); inštalátor z toho ukáže len `"sh /cdrom/karchi/late" failed with exit code 100`. Preto `late`
-dátum nekontroluje (`Acquire::Check-Date=false`).
-
-### Test vo VM
-
-`make vm-test` spustí jadro inštalátora priamo a odpovede, ktoré by písal človek, mu dá na príkazový riadok
-(`ANSWERS` v `tools/vm.py`). Inštalácia beží bez sieťovej karty a ISO je pripojené ako USB kľúč: kľúč je tiež
-disk a inštalátor ho nesmie ponúknuť na prepísanie (keby ho nespoznal, zastane pri otázke na disk a brána padne).
-Potom nainštalovaný disk naštartuje, cez SSH spustí `tests/check-installed.sh` a na obrazovke VM zmeria, že je
-po štarte tmavá, že ju obyčajný kláves nerozsvieti a že ju `SUPER + D` rozsvieti a zhasne. Nakoniec vytrhne
-napájanie a zopakuje to.
-
-SSH a `sudo` bez hesla má len testovacia inštalácia: zapína ich `karchi/test-key=…` na príkazovom riadku jadra.
-
-Kľúč je vo VM zapisovateľný ako skutočný (Ventoy z kľúča len na čítanie nenaštartuje), no zápisy idú do vrstvy,
-ktorú QEMU po skončení zahodí (`snapshot=on`): súbor s ISO sa nezmení.
-
-Namerané 11. 10. 2026: inštalácia 99 s, 246 balíkov, 659 MB na disku, 252 MB pamäte po štarte, štart za 3,7 s.
-Strop v `tests/check-installed.sh` je prvý zelený beh + 15 %.
-
-Dialógy inštalátora brána nevidí. Tie sa overujú ručne:
+## Build and test
 
 ```
-python3 -B tools/vm.py manual      # štart z kľúča s ISO cez jeho ponuku, dva disky, žiadne odpovede
-python3 -B tools/vm.py manual ~/.cache/karchi-os-headless-debian/vm/ventoy.img   # to isté z obrazu Ventoy kľúča
-python3 -B tools/vm.py shot        # snímka obrazovky (PNG), keď sa prestane meniť
-python3 -B tools/vm.py key ret     # klávesy: ret, tab, down, alt-f2 (konzola inštalátora), alt-f4 (jeho log)
+git clone --recurse-submodules https://github.com/Gooder24/karchi-os-headless-debian
+make check      # static checks and self-tests, also of the parts; seconds
+make iso        # the ISO into ~/.cache/karchi-os-headless-debian/out; the first run downloads about 0.9 GB
+make vm-test    # install without network into a fresh VM, two starts with a power cut between, checks
+```
+
+None of it needs root. The build runs in the official `debian:trixie-slim` under bubblewrap, which
+`tools/sandbox.sh` downloads by itself on its first run, so it works on hosts without `apt`, `dpkg-deb` or
+`xorriso` (Arch, for example) as well as on Debian. `make vm-test` needs QEMU with KVM and OVMF
+(Arch: `qemu-full edk2-ovmf`, Debian: `qemu-system-x86 ovmf`).
+
+### How the ISO is made
+
+Debian's official netinst stays as it is except for three things:
+
+1. `preseed.cfg` is added to the installer's initrd (the installer reads it before its first question), with two
+   of its files extended with Slovak QWERTY: the table of keymaps, and the list of keyboards its question
+   knows. An answer that is not in that list the installer silently replaces with the default `us`, and the
+   installed system then inherits it. The build therefore runs the keyboard step in the installer's own
+   userland and fails unless the keyboard of `preseed.cfg` comes out of it unchanged.
+2. The boot menu has one entry and starts it by itself after 5 seconds.
+3. A folder `/karchi` is added: our scripts, and `pool/` with our packages (`karchi-headless`, and
+   `laptop-server` and `reboot-when-idle` built from `parts/`) and the packages the netinst lacks (`iwd`,
+   `systemd-resolved`, `keyd`, `fastfetch`, `systemd-zram-generator`, `tailscale`, `unattended-upgrades` and
+   their dependencies).
+
+The list of missing packages is not kept by hand: `apt` works out what installing `karchi-headless` would take on
+an entirely empty system, and everything the netinst already carries in the same version is left out. Tailscale
+comes from `pkgs.tailscale.com` (`apt` checks its signature), the rest from `deb.debian.org`.
+
+The boot records (BIOS, UEFI, the partition table for a USB stick) are rewritten by `xorriso` in the same form
+the netinst has them.
+
+`make iso` ends with `tests/check-medium.sh`: it takes the `apt` commands that `iso/late` runs out of the
+finished ISO and runs them in the sandbox with the clock set to 2013. They have to succeed from the medium
+alone. An old laptop with a dead clock battery starts in the past, and `apt` then refuses a `Release` file newer
+than its clock ("not valid yet"); the installer shows only `"sh /cdrom/karchi/late" failed with exit code 100`.
+That is why `late` does not check dates (`Acquire::Check-Date=false`).
+
+### The test in a VM
+
+`make vm-test` starts the installer's kernel directly and gives it, on the kernel command line, the answers a
+person would type (`ANSWERS` in `tools/vm.py`). The installation runs without a network card, and the ISO is
+attached as a USB stick: the stick is a disk too, and the installer must not offer it to be overwritten (if it
+did not recognise it, it would stop at the disk question and the gate would fail). Then it starts the installed
+disk, runs `tests/check-installed.sh` over SSH, and measures on the VM's screen that it is dark after the start,
+that an ordinary key does not light it, and that `SUPER + D` lights it and darkens it. Finally it pulls the power
+and does it all again.
+
+`tests/check-installed.sh` checks, among others: no failed service; btrfs root and the EFI partition; swap only
+in zram; the answers of the installer (name, time zone, Wi-Fi network known to `iwd`, root locked); the network
+services; the lid and sleep; Tailscale waiting for a login without a key; the dark display; the Slovak console
+keyboard; the boot menu not waiting; GRUB keeping the running kernel with `panic=10` for trial boots; automatic
+updates without their own reboot; the network package sources; `karchi-doctor` finding nothing broken; and a
+budget of lightness (packages, disk, memory).
+
+Only the test installation has SSH and passwordless `sudo`: `karchi/test-key=…` on the kernel command line
+turns them on.
+
+In the VM the stick is writable like a real one (Ventoy does not start from a read-only stick), but the writes
+go into a layer QEMU throws away when it ends (`snapshot=on`): the ISO file does not change.
+
+Measured on 15 October 2026: installation in 101 s, 266 packages, 696 MB on disk, 263 MB of memory after the
+start, started in 3.8 s. The limits in `tests/check-installed.sh` are the first green run (11 October 2026)
+plus 15 %.
+
+The gate does not see the installer's dialogs. Those are checked by hand:
+
+```
+python3 -B tools/vm.py manual      # start from a stick with the ISO through its menu, two disks, no answers
+python3 -B tools/vm.py manual ~/.cache/karchi-os-headless-debian/vm/ventoy.img   # the same from a Ventoy stick's image
+python3 -B tools/vm.py shot        # a screenshot (PNG) once the screen stops changing
+python3 -B tools/vm.py key ret     # keys: ret, tab, down, alt-f2 (installer console), alt-f4 (its log)
 python3 -B tools/vm.py type text
 ```
 
-Obraz Ventoy kľúča sa na hostiteľovi bez roota vyrobiť nedá. Vznikol v testovacej VM (`vm.py up` s prázdnym
-obrazom ako druhým diskom, v nej `Ventoy2Disk.sh -I -g /dev/vdb` a ISO skopírované do `ISO/`).
+The image of a Ventoy stick cannot be made on the host without root. It was made in the test VM (`vm.py up` with
+an empty image as a second disk, `Ventoy2Disk.sh -I -g /dev/vdb` inside, and the ISO copied into `ISO/`).
 
-## Inštalácia na skutočný stroj
+### What the VM does not check
 
-ISO sa skopíruje na Ventoy kľúč medzi ostatné (`make usb DIR=/run/media/$USER/Ventoy/ISO`, nič sa nemaže), alebo
-sa zapíše na vlastný kľúč. Stroj musí štartovať cez **UEFI**; Secure Boot môže ostať zapnutý (zavádzač Debianu
-je podpísaný).
+A real Wi-Fi connection, turning off a laptop panel's backlight, the lid switch, the battery's charge limit, and
+logging in with an auth key. On a real machine `karchi-doctor` shows them.
 
-Inštalátor sa pýta v tomto poradí, potom už nikoho nepotrebuje:
+The display: `laptop-server display off` blanks the console by force (`setterm --blank force`), so a key press
+does not light it, and switches the backlight off (`bl_power`). Writing to `/sys/class/graphics/fb0/blank` is not
+enough: the first key press undoes it. When a graphics driver takes the screen over only after the service has
+run, a udev rule restores the state.
 
-1. názov počítača (predvolené `karchi-server`);
-2. meno používateľa a heslo (root ostáva zamknutý, používateľ má `sudo`);
-3. časové pásmo (predvolené `Europe/Bratislava`);
-4. Wi-Fi sieť a heslo (prázdne = bez Wi-Fi);
-5. Tailscale auth key (prázdne = prihlásiť neskôr ručne);
-6. kam inštalovať, keď je z čoho vyberať: každý disk ako celok (`ERASE the whole disk`) a, keď je na disku
-   s oddielmi aspoň 10 GB nepridelených, aj `only its N GB of free space`. Tá druhá voľba je prvá v zozname, berie
-   len najväčší súvislý nepridelený kus a existujúce oddiely nechá tak (napríklad Windows). Kľúč, z ktorého
-   inštalátor beží, v zozname nie je;
-7. potvrdenie zápisu na disk. Pri celom disku sa **prepíše celý vybraný disk** a v zozname sú oddiely #1 a #2;
-   pri voľnom mieste sú tam len nové oddiely s vyššími číslami. Predvolená odpoveď je „No“.
+`getty@tty1` has `TTYVTDisallocate` off: otherwise systemd clears the screen together with its history when the
+getty starts, the kernel sets the video mode again and the output comes back on, although the console stays
+"blanked". At the start of the system that was a race with `laptop-server-display-off.service`; after a logout
+on the console the display would light up every time. The test therefore also reads the state of the output
+straight from the driver (`/sys/kernel/debug/dri/0/state`).
 
-Vedľa iného systému: miesto musí byť nepridelené (nie prázdny zväzok). Zavádzač ide do existujúceho EFI oddielu
-do priečinka `debian`, súbory druhého systému ostanú. Stroj potom štartuje do KarchiOS bez ponuky; druhý systém sa
-spúšťa zo štartovacej ponuky firmvéru.
+A known limit: after being switched off, the machine does not switch itself on; that is up to the firmware.
+Everything after the power button press runs unattended.
 
-Na klávesnicu sa nepýta: je slovenská QWERTY už počas inštalácie (heslo sa teda píše tak isto ako potom na
-konzole; číslice sú so Shiftom) aj v nainštalovanom systéme. Zoznam inštalátora ponúka len slovenskú QWERTZ, preto
-je odpoveď daná vopred. Inú klávesnicu nastaví `sudo dpkg-reconfigure keyboard-configuration`.
+## Repository layout
 
-Overené s Ventoy 1.1.17 (UEFI, GPT, „Boot in normal mode“).
+| path | what |
+|---|---|
+| `pkg/control`, `pkg/root/`, `pkg/preinst`, `pkg/postinst`, `pkg/postrm` | the `karchi-headless` package; `root/` is installed as it is |
+| `parts/laptop-server`, `parts/reboot-when-idle` | the two parts, git submodules of their own repositories |
+| `iso/preseed.cfg` | answers for the Debian installer (everything except what a person is asked) |
+| `iso/sk-qwerty.ekmap` | Slovak QWERTY for the installer: its own table of keymaps lacks this variant |
+| `iso/questions`, `iso/templates` | our questions: time zone, Wi-Fi network and password, Tailscale auth key, disk |
+| `iso/late` | the installer's last step: our packages from the medium, then `post-install` with the answers |
+| `iso/grub-entry.cfg` | the boot menu's only entry |
+| `tools/sandbox.sh` | a Debian userland without root (bubblewrap); the build runs in it |
+| `tools/build-iso.sh` | builds the ISO |
+| `tools/vm.py` | the test VM: installation, start, checks, keys, screenshots |
+| `tests/check-installed.sh` | checks of the installed system |
+| `tests/check-medium.sh` | a check of the finished ISO: everything `iso/late` asks for is on the medium, also with a wrong clock |
+| `build.conf` | version and checksum of the netinst ISO, size of the test VM |
 
-Keď sa inštalátor zastaví s chybou, `Alt + F4` ukáže jeho log (späť `Alt + F1`); prečo, hovoria riadky s `E:`.
+Large files live outside the repository in `~/.cache/karchi-os-headless-debian` (`KARCHI_CACHE` points
+elsewhere, e.g. for a second build next to the first): `dl/` (the netinst, the sandbox's root file system),
+`sandbox/`, `build/`, `out/` (the finished ISO, the installer's kernel and initrd for the test), `vm/` (the test
+VM's disk, logs).
 
-Po reštarte displej zhasne. `SUPER + D` ho rozsvieti, na konzole je prihlasovací riadok.
+## Not in this version, on purpose
 
-```
-karchi-doctor                  # čo funguje a čo ešte treba urobiť ručne
-sudo tailscale up --ssh        # ak inštalátor nedostal auth key
-iwctl station wlan0 connect <sieť>     # Wi-Fi dodatočne
-sudo apt update && sudo apt full-upgrade   # aktualizácie: Debian aj Tailscale
-```
+Disk encryption unlocked by the TPM; `sshd` with keys for agents (the way in is Tailscale SSH); AI tools
+themselves; reinstalling while keeping the home directory; starting through BIOS; updates of Tailscale itself
+through `unattended-upgrades` (`apt full-upgrade` updates it).
 
-## Čo VM neoverí
+## License
 
-Skutočné pripojenie na Wi-Fi, zhasnutie podsvietenia panela notebooku, spínač veka a prihlásenie auth kľúčom.
-Na skutočnom stroji to ukáže `karchi-doctor`.
-
-Displej: `karchi-display off` zhasne konzolu vynútene (`setterm --blank force`), takže ju stlačenie klávesu
-nerozsvieti, a vypne podsvietenie (`bl_power`). Zápis do `/sys/class/graphics/fb0/blank` nestačí: zruší ho
-prvý stlačený kláves. Keď grafický ovládač prevezme obrazovku až po štarte služby, stav obnoví pravidlo udev
-(`90-karchi-display.rules`).
-
-`getty@tty1` má vypnuté `TTYVTDisallocate`: systemd inak pri štarte getty čistí obrazovku aj s históriou, jadro
-pri tom nanovo nastaví režim obrazovky a výstup sa zapne, hoci konzola ostáva „zhasnutá“. Pri štarte systému to
-bol pretek s `karchi-display-off.service`, po odhlásení na konzole by sa displej rozsvietil vždy.
-Test preto číta aj stav výstupu priamo z ovládača (`/sys/kernel/debug/dri/0/state`).
-
-Známy strop: stroj sa po vypnutí sám nezapne, to je vec firmvéru. Všetko po stlačení tlačidla prebehne bez obsluhy.
-
-## Rozdiely oproti verzii na Archu
-
-- Inštalátor je debianový (`debian-installer`), nie vlastný: rozdelenie disku, firmvér podľa hardvéru a zavádzač
-  rieši on. Preto funguje aj so zapnutým Secure Bootom a na inom hardvéri ako Intel.
-- Zavádzač je GRUB, nie systemd-boot.
-- Súborový systém je btrfs s jedným subvolume `@rootfs` (zvyk Debianu). `@home` sa dá oddeliť neskôr.
-- Aktualizácie fungujú hneď (`apt`), verzia na Archu kanál aktualizácií nemá.
-- Firmvér: `intel-microcode`, `firmware-intel-graphics` a `firmware-iwlwifi` sa inštalujú len tam, kde ten hardvér je.
-
-## Zámerne nie vo verzii 1
-
-Šifrovanie disku s odomykaním cez TPM; `sshd` s kľúčom pre agentov (dnu sa chodí cez Tailscale SSH); AI nástroje;
-prah nabíjania batérie; preinštalovanie so zachovaním domova; automatické aktualizácie (`unattended-upgrades`);
-štart cez BIOS.
+MIT
