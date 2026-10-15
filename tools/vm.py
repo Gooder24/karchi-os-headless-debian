@@ -29,8 +29,11 @@ CACHE = Path(os.environ.get('KARCHI_CACHE', Path.home() / '.cache/karchi-os-head
 OUT, VM = CACHE / 'out', CACHE / 'vm'
 KEY = VM / 'key'
 PORT = CONF['TEST_SSH_PORT']
-OVMF_CODE = Path('/usr/share/edk2/x64/OVMF_CODE.4m.fd')
-OVMF_VARS = Path('/usr/share/edk2/x64/OVMF_VARS.4m.fd')
+# The UEFI firmware of the VM where Arch (edk2-ovmf) or Debian (ovmf) puts it.
+OVMF_CODE, OVMF_VARS = next(
+    ((code, code.with_name(code.name.replace('CODE', 'VARS'))) for code in
+     (Path('/usr/share/edk2/x64/OVMF_CODE.4m.fd'), Path('/usr/share/OVMF/OVMF_CODE_4M.fd')) if code.exists()),
+    (Path('/usr/share/edk2/x64/OVMF_CODE.4m.fd'), Path('/usr/share/edk2/x64/OVMF_VARS.4m.fd')))
 USER = 'karchi'
 GiB = 1024**3
 
