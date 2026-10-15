@@ -14,13 +14,14 @@ describe() {  # /dev/sda - 512 GB Samsung SSD 860
 # ponytail: a free stretch inside an MBR extended partition is not seen; the machines this is for use GPT.
 free_gb() {
   disk=${SYS:-/sys}/block/${1#/dev/}; end=2048; best=0
-  for part in $(for start in "$disk"/*/start; do
+  parts=$(for start in "$disk"/*/start; do
       [ -e "$start" ] && echo "$(cat "$start"):$(cat "${start%start}size")"
-    done | sort -n) "$(cat "$disk/size"):0"; do
+    done | sort -n)
+  [ -n "$parts" ] || { echo 0; return; }  # no partition at all: nothing to keep, the whole disk is the choice
+  for part in $parts "$(cat "$disk/size"):0"; do
     [ $((${part%:*} - end)) -gt "$best" ] && best=$((${part%:*} - end))
     end=$((${part%:*} + ${part#*:}))
   done
-  [ "$end" -gt 2048 ] || best=0  # no partition at all: nothing to keep, the whole disk is the choice
   echo $((best / 2097152))  # in units of 2^30 bytes, which Windows' Disk Management calls GB: the numbers match
 }
 
@@ -30,8 +31,11 @@ if [ "$1" = --self-test ]; then  # two partitions, 95 GB free, a third partition
   echo 2048 > "$SYS/block/x/x1/start"; echo 204800 > "$SYS/block/x/x1/size"
   echo 800000000 > "$SYS/block/x/x3/start"; echo 100000000 > "$SYS/block/x/x3/size"
   echo 206848 > "$SYS/block/x/x2/start"; echo 600000000 > "$SYS/block/x/x2/size"
-  got=$(free_gb /dev/x); rm -r "$SYS"
+  got=$(free_gb /dev/x)
+  mkdir -p "$SYS/block/y/queue"; echo 33554432 > "$SYS/block/y/size"  # a new disk, no partition: 16 GB
+  empty=$(free_gb /dev/y); rm -r "$SYS"
   [ "$got" = 95 ] || { echo "free_gb: $got instead of 95" >&2; exit 1; }
+  [ "$empty" = 0 ] || { echo "free_gb of a disk without partitions: $empty instead of 0" >&2; exit 1; }
   exit 0
 fi
 
