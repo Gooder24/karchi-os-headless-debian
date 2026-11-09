@@ -72,4 +72,16 @@ done < <(reboot-when-idle status 2> /dev/null | awk '/^needs a look:/ { look = 1
 if [[ -d ~/.claude ]] && ! grep -qs 'reboot-when-idle hook' ~/.claude/settings.json; then
   warn 'Claude Code does not tell reboot-when-idle when it works: merge /usr/share/reboot-when-idle/claude-code-hooks.json into ~/.claude/settings.json'
 fi
+echo 'agents'
+check 'earlyoom guards the memory, agents last' all_units is-active earlyoom
+if ! head -1 ~/.bashrc 2> /dev/null | grep -qF /usr/lib/karchi/agent-path; then
+  warn "a command over SSH does not find ~/.local/bin (claude, codex, gh, node): sudo /usr/lib/karchi/agent-path-into-bashrc $USER"
+fi
+if [[ $(findmnt -no FSTYPE /tmp) == tmpfs ]]; then
+  warn "/tmp is in memory ($(df -m --output=used /tmp | tail -1 | tr -d ' ') MB now): it moves to the disk at the next start (systemctl mask tmp.mount)"
+fi
+memory=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo)
+if ((memory < 1024)); then
+  warn "only $memory MB of memory available: $(ps -eo comm --sort=-rss | sed -n '2,4p' | paste -sd, -) take the most"
+fi
 exit $failed

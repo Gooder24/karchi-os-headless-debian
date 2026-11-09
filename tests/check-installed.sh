@@ -4,10 +4,11 @@
 set -u
 failed=0
 
-# The budget of lightness: the first green run (11. 10. 2026) plus 15 %.
-MAX_PACKAGES=281   # 244
-MAX_DISK_MB=748    # 650
-MAX_MEMORY_MB=281  # 244
+# The budget of lightness: the first green run with the agent tools (9. 11. 2026) plus 15 %. Before them (15. 10.)
+# it was 266 packages, 696 MB and 258 MB: chromium and build-essential are most of the difference.
+MAX_PACKAGES=566   # 492
+MAX_DISK_MB=2085   # 1813
+MAX_MEMORY_MB=313  # 272
 
 check() {  # check "<description>" <command...>
   local name=$1 output
@@ -78,6 +79,13 @@ display_off() {  # as laptop-server says, as the console says (0 = not blanked),
   return 0
 }
 
+login_summary() {  # libdrm makes fastfetch's default graphics probe wake an otherwise blanked console
+  bash -lic true 2> /dev/null | grep -q 'OS' || return 1
+  display_off || return 1
+  fastfetch > /dev/null || return 1
+  display_off
+}
+
 keyboard() {  # what is set, and what the console really has: Y and Z as on QWERTY, the top row Slovak
   local keys
   grep -qx 'XKBLAYOUT="sk"' /etc/default/keyboard && grep -qx 'XKBVARIANT="qwerty"' /etc/default/keyboard \
@@ -117,6 +125,22 @@ battery_limit_ready() {  # the VM has no battery: the service ran and found noth
   [[ $(systemctl show -p Result --value laptop-server-battery) == success && -z $(laptop-server battery) ]]
 }
 
+agent_tools() {  # this script itself is a command over SSH: the shell agents on other machines reach this one with
+  local tool missing=
+  [[ :$PATH: == *":$HOME/.local/bin:"* ]] || { echo "PATH=$PATH"; return 1; }
+  for tool in git rg jq xxd file sqlite3 dig unzip zip rsync bc column tmux make gcc bwrap socat chromium; do
+    command -v "$tool" > /dev/null || missing="$missing $tool"
+  done
+  [[ -z $missing ]] || { echo "missing:$missing"; return 1; }
+  python3 -m venv --without-pip /tmp/venv-check && rm -rf /tmp/venv-check
+}
+
+earlyoom_rules() {
+  systemctl is-active --quiet earlyoom || { systemctl status earlyoom | tail -5; return 1; }
+  ps -o args= -C earlyoom | grep -q -- '--prefer ^(chromium|' || { ps -o args= -C earlyoom; return 1; }
+  ps -o args= -C earlyoom | grep -q -- '--ignore ^(t3' || { ps -o args= -C earlyoom; return 1; }
+}
+
 budget() {
   [[ $packages -le $MAX_PACKAGES && $disk -le $MAX_DISK_MB && $memory -le $MAX_MEMORY_MB ]] \
     || { echo "allowed: $MAX_PACKAGES packages, $MAX_DISK_MB MB on disk, $MAX_MEMORY_MB MB of memory"; return 1; }
@@ -140,7 +164,7 @@ check 'the start does not wait for a cable' not systemctl is-enabled --quiet sys
 check 'the lid does nothing, the machine never sleeps' lid_and_sleep
 check 'Wi-Fi network from the installer is known to iwd' wifi_from_installer
 check 'Tailscale waits for a login' tailscale_waits
-check 'fastfetch greets at login' grep -q 'OS' <(bash -lic true 2> /dev/null)
+check 'fastfetch greets at login and leaves the display off, also when run by hand' login_summary
 check 'the display went off after the start' display_off
 check 'the console keyboard is Slovak QWERTY, the font has its letters' keyboard
 check 'the boot menu does not wait' sudo grep -q '^ *set timeout=0' /boot/grub/grub.cfg
@@ -149,6 +173,11 @@ check 'security updates install themselves, without their own reboot' automatic_
 check 'the battery service ran (no battery in a VM)' battery_limit_ready
 check 'names resolve through systemd-resolved' getent hosts deb.debian.org
 check 'packages come from the network: Debian and Tailscale answer' apt_sources
+check 'agents find their tools in a command over SSH' agent_tools
+check 'Claude Code reads the description of this machine' grep -q 'KarchiOS Headless agent box' /etc/claude-code/CLAUDE.md
+check 'earlyoom ends a browser or VM first, never an agent' earlyoom_rules
+check '/tmp is on the disk, not in memory' not test "$(findmnt -no FSTYPE /tmp)" = tmpfs
+check "the user's services run without a login" test -e "/var/lib/systemd/linger/$USER"
 check 'karchi-doctor finds nothing broken' karchi-doctor
 check "light: $packages packages, $disk MB on disk, $memory MB of memory" budget
 printf '      started in: %s\n' "$(systemd-analyze | sed -n '1s/.*= //p')"

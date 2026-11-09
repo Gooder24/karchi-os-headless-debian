@@ -1,0 +1,8 @@
+// Graphics probes can wake a blanked console when libdrm is present (Chromium installs it).
+// Keep both the login greeting and a plain `fastfetch` safe on a headless server.
+{
+  "modules": [
+    "os", "host", "kernel", "uptime", "packages", "shell", "cpu",
+    "memory", "swap", "disk", "localip", "battery"
+  ]
+}
