@@ -1,0 +1,41 @@
+#!/bin/sh
+# Makes the first line of a user's ~/.bashrc read /usr/lib/karchi/agent-path; run again it changes nothing.
+#   agent-path-into-bashrc <user>                 the installer (post-install) and the upgrade (postinst) run it
+#   agent-path-into-bashrc --self-test            check the logic on a temporary file and exit
+set -eu
+line='. /usr/lib/karchi/agent-path  # karchi-headless: agent tools for SSH commands too'
+
+into() {  # into <file>: our line first, the rest as it was, owner and mode kept
+  if [ -e "$1" ] && grep -qF '/usr/lib/karchi/agent-path' "$1"; then return 0; fi
+  tmp=$(mktemp "$1.XXXXXX")
+  { echo "$line"; [ ! -e "$1" ] || cat "$1"; } > "$tmp"
+  [ ! -e "$1" ] || { chown --reference="$1" "$tmp"; chmod --reference="$1" "$tmp"; }
+  mv "$tmp" "$1"
+}
+
+if [ "${1:-}" = --self-test ]; then
+  dir=$(mktemp -d)
+  trap 'rm -rf "$dir"' EXIT
+  printf 'case $- in *i*) ;; *) return;; esac\nalias ll=ls\n' > "$dir/bashrc"
+  chmod 640 "$dir/bashrc"
+  into "$dir/bashrc"
+  into "$dir/bashrc"
+  [ "$(head -1 "$dir/bashrc")" = "$line" ]
+  [ "$(grep -c agent-path "$dir/bashrc")" = 1 ]
+  [ "$(sed -n 3p "$dir/bashrc")" = 'alias ll=ls' ]
+  [ "$(stat -c %a "$dir/bashrc")" = 640 ]
+  into "$dir/new"
+  [ "$(cat "$dir/new")" = "$line" ]
+  # What the line does: a non-interactive SSH command finds ~/.local/bin and an existing ~/.bun/bin, once.
+  mkdir -p "$dir/.bun/bin"
+  path=$(HOME=$dir PATH=/usr/bin:/bin sh -c '. "$1"; . "$1"; echo "$PATH"' - "$(dirname "$0")/agent-path")
+  [ "$path" = "$dir/.local/bin:$dir/.bun/bin:/usr/bin:/bin" ] || { echo "PATH=$path"; exit 1; }
+  echo 'agent-path-into-bashrc: self-test ok'
+  exit
+fi
+
+user=${1:?usage: agent-path-into-bashrc <user>}
+home=$(getent passwd "$user" | cut -d: -f6)
+[ -d "$home" ] || exit 0
+into "$home/.bashrc"
+chown "$user:" "$home/.bashrc"

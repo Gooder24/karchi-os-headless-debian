@@ -117,6 +117,22 @@ battery_limit_ready() {  # the VM has no battery: the service ran and found noth
   [[ $(systemctl show -p Result --value laptop-server-battery) == success && -z $(laptop-server battery) ]]
 }
 
+agent_tools() {  # this script itself is a command over SSH: the shell agents on other machines reach this one with
+  local tool missing=
+  [[ :$PATH: == *":$HOME/.local/bin:"* ]] || { echo "PATH=$PATH"; return 1; }
+  for tool in git rg jq xxd file sqlite3 dig unzip zip rsync bc column tmux make gcc bwrap socat chromium; do
+    command -v "$tool" > /dev/null || missing="$missing $tool"
+  done
+  [[ -z $missing ]] || { echo "missing:$missing"; return 1; }
+  python3 -m venv --without-pip /tmp/venv-check && rm -rf /tmp/venv-check
+}
+
+earlyoom_rules() {
+  systemctl is-active --quiet earlyoom || { systemctl status earlyoom | tail -5; return 1; }
+  ps -o args= -C earlyoom | grep -q -- '--prefer ^(chromium|' || { ps -o args= -C earlyoom; return 1; }
+  ps -o args= -C earlyoom | grep -q -- '--ignore ^(t3' || { ps -o args= -C earlyoom; return 1; }
+}
+
 budget() {
   [[ $packages -le $MAX_PACKAGES && $disk -le $MAX_DISK_MB && $memory -le $MAX_MEMORY_MB ]] \
     || { echo "allowed: $MAX_PACKAGES packages, $MAX_DISK_MB MB on disk, $MAX_MEMORY_MB MB of memory"; return 1; }
@@ -149,6 +165,11 @@ check 'security updates install themselves, without their own reboot' automatic_
 check 'the battery service ran (no battery in a VM)' battery_limit_ready
 check 'names resolve through systemd-resolved' getent hosts deb.debian.org
 check 'packages come from the network: Debian and Tailscale answer' apt_sources
+check 'agents find their tools in a command over SSH' agent_tools
+check 'Claude Code reads the description of this machine' grep -q 'KarchiOS Headless agent box' /etc/claude-code/CLAUDE.md
+check 'earlyoom ends a browser or VM first, never an agent' earlyoom_rules
+check '/tmp is on the disk, not in memory' not test "$(findmnt -no FSTYPE /tmp)" = tmpfs
+check "the user's services run without a login" test -e "/var/lib/systemd/linger/$USER"
 check 'karchi-doctor finds nothing broken' karchi-doctor
 check "light: $packages packages, $disk MB on disk, $memory MB of memory" budget
 printf '      started in: %s\n' "$(systemd-analyze | sed -n '1s/.*= //p')"

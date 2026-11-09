@@ -1,0 +1,14 @@
+# Sourced from the first line of ~/.bashrc (karchi-headless puts it there). Debian's bash reads ~/.bashrc also for
+# a command run over SSH (`ssh box 'node --version'`), but the rest of ~/.bashrc stops at "not interactive" and
+# ~/.profile is never read there: without this, the tools agents install for themselves (claude, codex, gh, node,
+# bun, uv) are missing in exactly the shell other machines and agents reach this one with.
+# ~/.local/bin always; the other folders only where they exist. Nothing is added twice.
+for _karchi_dir in "$HOME/.local/share/mise/shims" "$HOME/.local/share/vite-plus/bin" "$HOME/go/bin" \
+  "$HOME/.cargo/bin" "$HOME/.bun/bin" "$HOME/bin" "$HOME/.local/bin"; do
+  case :$PATH: in
+    *":$_karchi_dir:"*) ;;
+    *) [ -d "$_karchi_dir" ] || [ "$_karchi_dir" = "$HOME/.local/bin" ] && PATH=$_karchi_dir:$PATH ;;
+  esac
+done
+unset _karchi_dir
+export PATH
