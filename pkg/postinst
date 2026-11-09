@@ -6,10 +6,14 @@ dpkg-maintscript-helper rm_conffile /etc/keyd/karchi.conf 2026.10.15~ karchi-hea
 dpkg-maintscript-helper rm_conffile /etc/default/grub.d/karchi.cfg 2026.10.15~ karchi-headless -- "$@"
 [ "$1" = configure ] || exit 0
 rm -f /etc/systemd/system/multi-user.target.wants/karchi-display-off.service
-# A machine installed before 2026-11-09: its people get the agent tools in SSH commands too (post-install does
-# this at installation). Run again it changes nothing.
+# A machine installed before 2026-11-09: its people get the agent tools in SSH commands too, and their services
+# run without a login (post-install does both at installation). Run again it changes nothing; one person's
+# ~/.bashrc that cannot be written does not stop the upgrade.
 getent group sudo | cut -d: -f4 | tr ',' '\n' | while read -r user; do
-  if [ -n "$user" ]; then /usr/lib/karchi/agent-path-into-bashrc "$user"; fi
+  [ -n "$user" ] || continue
+  /usr/lib/karchi/agent-path-into-bashrc "$user" || echo "karchi-headless: ~$user/.bashrc left as it was" >&2
+  install -d /var/lib/systemd/linger
+  touch "/var/lib/systemd/linger/$user"
 done
 # /tmp goes back to the disk (Debian 13 made it a tmpfs of half the memory). Agents leave browser profiles, builds and
 # test files there; in a tmpfs they take memory until the next reboot: 4.4 GB of 15.6 on asus, 0.8 of 3.8 on dell
@@ -20,7 +24,7 @@ if [ -z "${2:-}" ] || dpkg --compare-versions "$2" lt 2026.11.09; then
 fi
 # earlyoom now starts with the rules of its drop-in (10-karchi.conf).
 if [ -d /run/systemd/system ]; then
-  systemctl daemon-reload
+  systemctl daemon-reload || true
   systemctl enable earlyoom > /dev/null 2>&1 || true
   systemctl restart earlyoom || true
 fi

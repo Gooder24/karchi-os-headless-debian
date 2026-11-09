@@ -4,10 +4,11 @@
 set -u
 failed=0
 
-# The budget of lightness: the first green run (11. 10. 2026) plus 15 %.
-MAX_PACKAGES=281   # 244
-MAX_DISK_MB=748    # 650
-MAX_MEMORY_MB=281  # 244
+# The budget of lightness: the first green run with the agent tools (9. 11. 2026) plus 15 %. Before them (15. 10.)
+# it was 266 packages, 696 MB and 258 MB: chromium and build-essential are most of the difference.
+MAX_PACKAGES=566   # 492
+MAX_DISK_MB=2085   # 1813
+MAX_MEMORY_MB=313  # 272
 
 check() {  # check "<description>" <command...>
   local name=$1 output
@@ -76,6 +77,13 @@ display_off() {  # as laptop-server says, as the console says (0 = not blanked),
   # The console can count as blanked over an output that something has turned on again behind its back.
   sudo grep -q 'active=1' /sys/kernel/debug/dri/0/state && { echo 'the video output is on'; return 1; }
   return 0
+}
+
+login_summary() {  # libdrm makes fastfetch's default graphics probe wake an otherwise blanked console
+  bash -lic true 2> /dev/null | grep -q 'OS' || return 1
+  display_off || return 1
+  fastfetch > /dev/null || return 1
+  display_off
 }
 
 keyboard() {  # what is set, and what the console really has: Y and Z as on QWERTY, the top row Slovak
@@ -156,7 +164,7 @@ check 'the start does not wait for a cable' not systemctl is-enabled --quiet sys
 check 'the lid does nothing, the machine never sleeps' lid_and_sleep
 check 'Wi-Fi network from the installer is known to iwd' wifi_from_installer
 check 'Tailscale waits for a login' tailscale_waits
-check 'fastfetch greets at login' grep -q 'OS' <(bash -lic true 2> /dev/null)
+check 'fastfetch greets at login and leaves the display off, also when run by hand' login_summary
 check 'the display went off after the start' display_off
 check 'the console keyboard is Slovak QWERTY, the font has its letters' keyboard
 check 'the boot menu does not wait' sudo grep -q '^ *set timeout=0' /boot/grub/grub.cfg

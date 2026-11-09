@@ -28,9 +28,12 @@ needs, and which part gives it:
 | not wear itself out | the screen is dark, the battery stays at 80 %, the SSD is not swapped on | laptop-server |
 | stay patched without killing work | security fixes come every day; the reboot a new kernel needs waits until no agent turn, background task or build runs | unattended-upgrades + reboot-when-idle |
 | survive a bad kernel | a new kernel boots once on trial; without network, after a crash or a hang it goes back to the old one | reboot-when-idle |
-| be light | more of an old laptop's memory is left for agents and builds | Debian's base, no desktop: 696 MB on disk, 263 MB of memory after the start, started in 3.8 s |
+| be light | more of an old laptop's memory is left for agents and builds | Debian's base and the tools agents use, no desktop: 1813 MB on disk, 272 MB of memory after the start, started in 4.8 s |
 | say what is wrong | one command over SSH instead of a monitor and a keyboard | `karchi-doctor` |
 | let agents work at once, without asking | an agent finds its tools in any shell, also in `ssh box '<command>'`, knows the machine it is on, checks UIs in a headless browser, and a runaway build or browser ends before the agents do | this repo |
+
+Fastfetch's server summary skips graphics probes: with Chromium's libdrm installed they would wake the
+blanked console, even from an SSH login. Both the greeting and a plain `fastfetch` use `/etc/fastfetch/config.jsonc`.
 
 ## The parts
 
@@ -241,9 +244,10 @@ turns them on.
 In the VM the stick is writable like a real one (Ventoy does not start from a read-only stick), but the writes
 go into a layer QEMU throws away when it ends (`snapshot=on`): the ISO file does not change.
 
-Measured on 15 October 2026: installation in 101 s, 266 packages, 696 MB on disk, 263 MB of memory after the
-start, started in 3.8 s. The limits in `tests/check-installed.sh` are the first green run (11 October 2026)
-plus 15 %.
+Measured on 9 November 2026: installation in 159 s, 492 packages, 1813 MB on disk, 272 MB of memory after the
+start, started in 4.8 s. Without the agent tools (15 October) it was 266 packages and 696 MB; chromium and
+build-essential are most of the difference. The limits in `tests/check-installed.sh` are the first green run
+with the agent tools plus 15 %.
 
 The gate does not see the installer's dialogs. Those are checked by hand:
 
