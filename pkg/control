@@ -6,6 +6,7 @@ Section: metapackages
 Priority: optional
 Depends: laptop-server, reboot-when-idle, unattended-upgrades, systemd-resolved, systemd-timesyncd, libpam-systemd, iwd, wireless-regdb, tailscale, tailscale-archive-keyring, fastfetch, console-setup, btrfs-progs, sudo, openssh-client, ca-certificates, curl, nano, less,
  earlyoom, git, ripgrep, jq, xxd, file, sqlite3, bind9-dnsutils, unzip, zip, rsync, bc, bsdextrautils, tmux,
+ smartmontools,
  build-essential, python3-venv, bubblewrap, socat, chromium, fonts-noto-color-emoji
 Description: KarchiOS Headless on Debian: a laptop that serves AI agents
  Everything the system has beyond Debian's base, as one package. Its parts:

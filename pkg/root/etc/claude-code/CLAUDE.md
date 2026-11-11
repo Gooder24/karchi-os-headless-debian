@@ -7,6 +7,7 @@ unattended, several at a time, next to long-running services. `karchi-doctor` sa
 - Every shell has them, a command over SSH (`ssh <box> '<command>'`) too: git, rg, jq, xxd, file, sqlite3, dig,
   unzip, zip, rsync, bc, column, tmux, make, gcc, python3 with venv, chromium, and what users install into
   `~/.local/bin`, `~/.bun/bin`, `~/.cargo/bin`, `~/go/bin` or mise (`/usr/lib/karchi/agent-path`).
+- Disk health: `sudo smartctl -H -A /dev/<disk>` (smartmontools; `smartd` watches the disks and logs to the journal).
 - A tool that is missing and other agents will need too belongs in the `Depends` of karchi-headless
   (github.com/Gooder24/karchi-os-headless-debian, `pkg/control`), not only in this machine's `apt install`.
 - Web pages and UIs: `chromium --headless=new --window-size=1366,768 --screenshot=<file.png> <url>`, or Playwright

@@ -131,6 +131,7 @@ agent_tools() {  # this script itself is a command over SSH: the shell agents on
   for tool in git rg jq xxd file sqlite3 dig unzip zip rsync bc column tmux make gcc bwrap socat chromium; do
     command -v "$tool" > /dev/null || missing="$missing $tool"
   done
+  [[ -x /usr/sbin/smartctl ]] || missing="$missing smartctl"  # in sbin: agents run it with sudo
   [[ -z $missing ]] || { echo "missing:$missing"; return 1; }
   python3 -m venv --without-pip /tmp/venv-check && rm -rf /tmp/venv-check
 }
