@@ -1,0 +1,66 @@
+name: Accessibility barrier
+description: Report something that is hard or impossible to use with a keyboard, a screen reader or another assistive technology
+title: "[a11y] "
+labels: ["accessibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. A report of a barrier is expertise, not a complaint. You do not need to say whether you have a disability.
+        Screenshots and recordings are optional. Do not paste passwords, Wi-Fi keys or Tailscale auth keys.
+  - type: textarea
+    id: task
+    attributes:
+      label: What were you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: barrier
+    attributes:
+      label: What went wrong?
+      description: What you saw, heard or typed, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Where you were (for example the installer question, or the output of karchi-doctor) and what you pressed, in order.
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Your machine, the output of `cat /etc/os-release`, your terminal or SSH client with its version, and the keyboard layout.
+    validations:
+      required: true
+  - type: textarea
+    id: assistive-technology
+    attributes:
+      label: Assistive technology
+      description: Screen reader, braille display, magnifier, or other, with its version. Write "none" if you use only the keyboard.
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: The levels are explained under "Severity" in ACCESSIBILITY.md.
+      options:
+        - "Critical: stops a core task"
+        - "Serious: a major difficulty, but a workaround exists"
+        - "Moderate: an annoyance, or an inconsistent experience"
+        - "Minor: little effect on use"
+    validations:
+      required: true
+  - type: textarea
+    id: anything-else
+    attributes:
+      label: Anything else
+      description: Optional. Workarounds you found, or a screenshot or recording if you are comfortable sharing one.
+    validations:
+      required: false

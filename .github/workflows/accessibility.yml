@@ -1,0 +1,17 @@
+name: accessibility
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  documentation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Documentation accessibility check
+        run: python3 .github/scripts/check-docs.py

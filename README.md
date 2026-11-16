@@ -13,6 +13,29 @@ karchi-headless              this repository: the installer ISO, the network, Ta
  └─ Debian 13 (trixie)       base system, unattended-upgrades, iwd, systemd-networkd, Tailscale
 ```
 
+## Requirements
+
+To install on a machine:
+
+- an x86-64 (amd64) PC or laptop that starts through UEFI;
+- a USB stick for the ISO: Ventoy, or a stick of its own;
+- for the option "only its free space", a disk with at least 10 GB unallocated (see
+  [Install on a real machine](#install-on-a-real-machine)).
+
+To build and test (no root needed): `git`, `make`, `python3`, `bwrap` (bubblewrap), and internet access for the first
+`make iso`, which downloads about 0.9 GB. `make vm-test` also needs QEMU with KVM and OVMF.
+
+## Quick start
+
+```
+git clone --recurse-submodules https://github.com/Gooder24/karchi-os-headless-debian
+cd karchi-os-headless-debian
+make check
+```
+
+`make check` takes seconds. It runs the syntax checks and self-tests of the scripts, and the self-tests of both parts.
+To build the installer ISO next, run `make iso`; see [Build and test](#build-and-test).
+
 ## What makes a good server OS for an agent box
 
 An "agent box" is a machine where Claude Code, Codex and friends work for hours unattended: long turns,
@@ -309,6 +332,12 @@ VM's disk, logs).
 Disk encryption unlocked by the TPM; `sshd` with keys for agents (the way in is Tailscale SSH); the AI tools
 themselves (they update themselves, each with its own installer); a virtual display for agents' computer use; reinstalling while keeping the home directory; starting through BIOS; updates of Tailscale itself
 through `unattended-upgrades` (`apt full-upgrade` updates it).
+
+## Accessibility
+
+The installer and the tools are text, used from the keyboard on a console or over SSH.
+[ACCESSIBILITY.md](ACCESSIBILITY.md) lists what is checked, what is not checked yet, and how to report a barrier.
+The rules for contributors are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
