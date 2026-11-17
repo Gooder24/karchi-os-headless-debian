@@ -83,7 +83,7 @@ are installed only where that hardware is.
 
 [github.com/Gooder24/laptop-server](https://github.com/Gooder24/laptop-server), a package of its own.
 
-| | why |
+| feature | why |
 |---|---|
 | the lid does nothing | close it, stack it, put it on a shelf: it keeps serving |
 | the machine never sleeps | not the lid, not an idle timer, not a stray `systemctl suspend` |
@@ -96,7 +96,7 @@ are installed only where that hardware is.
 
 ### 3. The network that needs nobody (this repository)
 
-| | why |
+| feature | why |
 |---|---|
 | Wi-Fi through `iwd`, which gives itself an address; the network from the installer is in `/var/lib/iwd` | `iwd` reconnects by itself after an outage, with no NetworkManager or desktop agent |
 | a cable through `systemd-networkd`, any `en*` interface, DHCP | plug in a cable or a USB adapter and it works, no setting |
@@ -137,7 +137,7 @@ Measured on the three machines this runs on (`asus`, `dell`, `e540`), 30 days of
 machine ran them over SSH. Every machine had also been given `chromium`, `build-essential` and `earlyoom` by hand,
 each a little differently. So:
 
-| | why |
+| feature | why |
 |---|---|
 | the tools agents reach for are installed: `rg`, `jq`, `xxd`, `file`, `sqlite3`, `dig`, `unzip`, `zip`, `rsync`, `bc`, `column`, `tmux`, `git`, a compiler, `python3 -m venv` | a turn does not stop at `command not found` and then install it, differently on every machine |
 | the first line of the user's `~/.bashrc` reads `/usr/lib/karchi/agent-path` | Tailscale SSH runs a command in a shell that never reads `~/.profile`, and the rest of `~/.bashrc` stops there; now `ssh box 'claude -p …'` finds what is in `~/.local/bin`, `~/.bun/bin`, `~/.cargo/bin`, `~/go/bin` and mise |
