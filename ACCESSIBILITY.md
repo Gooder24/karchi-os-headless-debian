@@ -82,12 +82,12 @@ The owner of accessibility for this repository is the repository owner, Gooder24
 ## Known limitations
 
 - **The installer's dialogs.** The test VM answers the installer's questions from the kernel command line, so it never
-  sees the dialogs. Their keyboard operation and their output for a screen reader have not been checked. Tracked in
-  #3 (keyboard) and #4 (screen reader).
-- **The console display.** After the start the display is switched off. On the machine itself, `SUPER + D` lights it.
+  sees the dialogs. A manual keyboard run found Go Back barriers (#8, #9); #3 remains incomplete.
+  Screen reader output has not been checked (#4).
+- **The console display.** After the start the display is switched off. On the machine itself, `SUPER + D` or `Ctrl + Alt + D` lights it.
   Whether a screen reader user can work at the console in that state has not been tested. Tracked in #5.
-- **Tables.** Three tables in the README have an empty header cell. The automatic check does not look at tables, so
-  this was found by hand. Tracked in #2.
+- **Local screen reader.** No `brltty` or `espeakup` setup is supplied by `pkg/` (#7). SSH from a machine
+  with the user's own screen reader is a possible route after networking and access setup; it does not cover installation.
 
 ## Dependencies
 
@@ -127,19 +127,60 @@ This section records what has been run. A check counts as done only when its res
 without alternative text, and vague link text. It is configured in `.github/workflows/accessibility.yml`. Local run on
 16 November 2026: no problems.
 
-### Keyboard-only check (not run yet, tracked in #3)
+### Keyboard-only check (partial, 18 November 2026, tracked in #3)
 
-On a test machine or in a VM, with no mouse attached:
+Repeat on a test machine or VM without a mouse:
 
-1. Start the installer from the stick and answer each question with the keys the dialog shows, including Tab and the
-   arrow keys.
-2. For each question, check that every option can be reached, that the option with focus is visible, that focus moves
-   in the order the options appear, and that the question can be left.
-3. After the first start, press `SUPER + D`, log in on the console and run `karchi-doctor`. Check that every line can
-   be read and that nothing needs a mouse.
+1. Start from the stick and answer each question with its documented keys, including Tab and arrows.
+2. Reach every option, check visible focus and its order, and leave every question with Go Back (or No where offered).
+3. After first boot, test both display shortcuts, log in on the console and run `karchi-doctor`; read every line.
 
-Status: not run. The test VM does not press keys in the installer's dialogs (see Known limitations), so this needs a
-person, or `tools/vm.py manual` with its key and screenshot commands.
+Run on ASUS host Debian 13, QEMU q35/KVM with OVMF UEFI, 2 CPUs, 2 GiB RAM, a 16 GiB `vda`
+and 2 GiB `vdb`, no network during installation. ISO: `karchios-headless-debian-2026.11.18-x86_64.iso`,
+SHA256 `78477eec25c45709d55c0788b8ed61dda9a112944249a67bb35027305c013194`. Source: headless
+`e289a02`, laptop-server `252c898`. The ISO was built from the changed working tree before the commits.
+All manual interaction used `tools/vm.py key`, `type` and `shot`, without SSH or a mouse. Hostname,
+username, password and Tailscale key were fictional. The target was `vda` (shown as 17 decimal GB), never `vdb`.
+
+Screenshots before and after every Tab/arrow, pixel differences and the observation log are retained outside git
+in this task's scratch directory, `overenie/3/` and `overenie/observations.md`. Each image was visually inspected.
+The evidence sequence numbers below identify the originals; AE is the number of changed pixels, not a claim
+that a particular widget changed. A focus claim also required looking at the before/after images.
+
+Observed order and results:
+
+| Question or step | Observed keyboard result | Evidence |
+|---|---|---|
+| GRUB install entry | Selected entry visible; automatic boot occurred before navigation was captured. Navigation unverified. | 001; 002/003 already show installer, AE 0 |
+| Hostname | Tab field to Continue visible; fictional value entered after returning from main menu. Left from Continue returned to field. Go Back unverified. | 005/006 AE 1408; 032/033 AE 1408; 035/036 AE 1408 |
+| Username | Tab field → Continue → Go Back; Enter on Go Back leaves to main menu. Up selects network, Enter reopens hostname. | 011/012 AE 1408; 014/015 AE 2432; 017/018; 020/021 AE 12544 |
+| Password | Tab field → Show Password checkbox → Continue → Go Back; Go Back returns to username. | 048/049 AE 256; 051/052 AE 1408; 054/055 AE 2432; 057/058 |
+| Password confirmation | Same Tab order; Go Back returns to password. Password then reentered twice. | 061/062 AE 256; 064/065 AE 1408; 067/068 AE 2432; 070/071 |
+| Time zone | Tab field → Continue → Go Back visible, but Go Back moves forward to Tailscale and skips queued Wi-Fi questions: barrier #8. | 074/075 AE 1408; 077/078 AE 2432; 080/081 |
+| Wi-Fi SSID/password | Not shown after the preceding Go Back; unverified, skipped by #8 rather than preseed. | 081 |
+| Tailscale key | Tab field → Continue → Go Back visible; Go Back advances to disk selection: same barrier #8. | 083/084 AE 1408; 086/087 AE 2432; 089/090 |
+| Where to install | Down selects vdb, Up returns to vda; Tab reaches Go Back, Enter redisplays this question: barrier #9. Then vda accepted. | 092/093 and 095/096 AE 9984 each; 098/099 AE 5544; 101/102 |
+| Write changes to disks | Only vda listed. Tab No → Yes visible; Left while Yes focused does nothing (AE 0). Enter accepted Yes. The No/exit path was not tested. | 108/109 AE 1152; 111/112 AE 0; 114/115 |
+
+Questions answered by `iso/preseed.cfg` did not appear and are **unverified**: locale/language, keyboard layout,
+network interfaces and domain, firmware loading, root/full name and home encryption, UTC/NTP and the standard
+Debian time-zone question, partition recipe/label/swap and existing LVM/RAID removal, kernel selection, mirror
+and package/task selection, popularity contest, GRUB target/fallback and final reboot notice. This run does not
+claim keyboard coverage of those hidden paths or other disk layouts.
+
+Step 1 is incomplete: installation questions were exercised, but GRUB navigation was not captured.
+Step 2 failed: #8 and #9 prevent the required return paths; hostname Go Back and write-confirmation No are
+also unverified. #3 remains open. The installer was not changed in this audit.
+
+Step 3 passed for keyboard operation in this VM: the first-boot display was dark; `SUPER + D` showed
+the login prompt and hid it again (124/125, 126/127); `Ctrl + Alt + D` did the same (129/130, 132/133).
+The first pair changed resolution; its pixel diff uses black padding to the larger size (AE 1856); the other
+three have AE 812, 796 and 812. This proves the VM image switches, not physical panel backlight behavior.
+Console login succeeded (135/136). Typing `karchi` and Tab completed `karchi-doctor` (138/139, AE 130).
+Its entire output and the returned shell prompt are visible in 141: status words are readable, all checks report
+`ok` except `WARN` that Tailscale is not logged in, expected with fictional credentials. No mouse or guest SSH
+was used. The installation finished and powered off automatically; `up` then hit its expected 240-second test-key
+SSH timeout, after which only console keys were used. The VM was stopped and its PID confirmed absent afterward.
 
 ### Screen reader check (not run yet, tracked in #4)
 
@@ -157,4 +198,4 @@ first. The checks in this repository run headless and cannot replace this step.
 ### Documentation
 
 Reviewed by hand on 16 November 2026: `README.md`, `CONTRIBUTING.md` and this file. The documentation contains no
-images or videos. Problem found: the empty table header cells listed under Known limitations.
+images or videos. Problem found in that review: empty header cells in three `README.md` tables; `10f0ad1` fixed them.
