@@ -87,7 +87,7 @@ are installed only where that hardware is.
 |---|---|
 | the lid does nothing | close it, stack it, put it on a shelf: it keeps serving |
 | the machine never sleeps | not the lid, not an idle timer, not a stray `systemctl suspend` |
-| the display is dark after the start, `SUPER + D` switches it | the panel is the biggest power draw and wears out; at the machine, one key gives the console |
+| the display is dark after the start, `SUPER + D` or `Ctrl + Alt + D` switches it | the panel is the biggest power draw and wears out; at the machine, one key gives the console |
 | charging stops at 80 % | a lithium battery kept full for years loses its capacity; at 80 % it lasts and still covers a power cut |
 | swap in compressed memory (zram) | old laptops have little memory; no swap partition wears the SSD |
 | the boot menu does not wait | after a power cut the machine is back in seconds |
@@ -191,7 +191,7 @@ Tested with Ventoy 1.1.17 (UEFI, GPT, "Boot in normal mode").
 When the installer stops with an error, `Alt + F4` shows its log (back with `Alt + F1`); the lines with `E:` say
 why.
 
-After the restart the display goes dark. `SUPER + D` lights it; the console shows a login prompt.
+After the restart the display goes dark. `SUPER + D` or `Ctrl + Alt + D` lights it; the console shows a login prompt.
 
 ```
 karchi-doctor                               what works and what is still to be done by hand
@@ -251,7 +251,7 @@ person would type (`ANSWERS` in `tools/vm.py`). The installation runs without a 
 attached as a USB stick: the stick is a disk too, and the installer must not offer it to be overwritten (if it
 did not recognise it, it would stop at the disk question and the gate would fail). Then it starts the installed
 disk, runs `tests/check-installed.sh` over SSH, and measures on the VM's screen that it is dark after the start,
-that an ordinary key does not light it, and that `SUPER + D` lights it and darkens it. Finally it pulls the power
+that an ordinary key does not light it, and that `SUPER + D` or `Ctrl + Alt + D` lights it and darkens it. Finally it pulls the power
 and does it all again.
 
 `tests/check-installed.sh` checks, among others: no failed service; btrfs root and the EFI partition; swap only

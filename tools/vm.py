@@ -273,7 +273,9 @@ def display_keys():
     for name, keys, lit in (('the display is off after the start', [], False),
                             ('a key press alone does not turn it on', ['shift'], False),
                             ('SUPER+D turns it on', ['meta_l-d'], True),
-                            ('SUPER+D turns it off', ['meta_l-d'], False)):
+                            ('SUPER+D turns it off', ['meta_l-d'], False),
+                            ('Ctrl+Alt+D turns it on', ['ctrl-alt-d'], True),
+                            ('Ctrl+Alt+D turns it off', ['ctrl-alt-d'], False)):
         press(qmp, *keys, pause=1)
         state = ssh('laptop-server display status', capture_output=True, text=True).stdout.strip()
         ok = screen_lit(qmp) == lit and state == ('on' if lit else 'off')
