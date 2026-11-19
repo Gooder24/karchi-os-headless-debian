@@ -77,14 +77,15 @@ The owner of accessibility for this repository is the repository owner, Gooder24
 - **Language:** the installer runs in English (en_US.UTF-8). The keyboard is Slovak QWERTY, in the installer and in the
   installed system.
 - **Ways in:** the physical console, and SSH through Tailscale.
-- **Assistive technology:** none has been tested yet; see [Checks](#checks).
+- **Assistive technology:** Orca 48.1 on `karchi-doctor`, `fastfetch` and the README (19 November 2026); not in the
+  installer, which has no speech yet (#10). See [Checks](#checks).
 
 ## Known limitations
 
 - **The installer's dialogs.** The test VM answers the installer's questions from the kernel command line, so it never
   sees the dialogs. Go Back in our own questions now returns to the previous one and, from the first, to the
   main menu (#8, #9, re-checked by hand on 19 November 2026); #3 remains incomplete.
-  Screen reader output has not been checked (#4).
+  No screen reader can read them yet: the boot menu has no speech synthesis entry (#10).
 - **The console display.** After the start the display is switched off. On the machine itself, `SUPER + D` or `Ctrl + Alt + D` lights it.
   Whether a screen reader user can work at the console in that state has not been tested. Tracked in #5.
 - **Local screen reader.** No `brltty` or `espeakup` setup is supplied by `pkg/` (#7). SSH from a machine
@@ -96,7 +97,7 @@ Dependencies that show text or ask questions, and what is known about them:
 
 - **debian-installer:** the text dialogs of the installer; see Known limitations.
 - **The Linux console:** KarchiOS sets the `Lat2` console codeset for it. Its readability has not been tested.
-- **fastfetch:** prints a system summary at each login. The screen reader check below covers it.
+- **fastfetch:** prints a system summary at each login. A screen reader reads its logo in front of every line (#11).
 - **laptop-server:** switches the display off; see Known limitations.
 - **Tailscale:** gives the SSH access. Its own interface is not used here.
 - **Chromium:** installed for agents, which run it headless. No interface of this project is built on it.
@@ -194,12 +195,24 @@ Its entire output and the returned shell prompt are visible in 141: status words
 was used. The installation finished and powered off automatically; `up` then hit its expected 240-second test-key
 SSH timeout, after which only console keys were used. The VM was stopped and its PID confirmed absent afterward.
 
-### Screen reader check (not run yet, tracked in #4)
+### Screen reader check (19 November 2026)
 
-A person with a screen reader repeats the steps above with the screen reader on. They record the screen reader and its
-version, the terminal or SSH client, and the machine. They check that each installer question and its options are
-read, that the answer field is announced, and that the output of `karchi-doctor` is read line by line, status word
-first. The checks in this repository run headless and cannot replace this step.
+Orca 48.1 with speech-dispatcher 0.12.0 on thinkpad-e540 (KarchiOS Headless, karchi-headless 2026.11.11), commands
+typed into lxterminal as they would be over SSH; the README as GitHub renders it, in Chromium 156. An agent ran it
+with `citacka` (karchi-skills), which writes down the text Orca sends to the synthesizer: the words, not the voice.
+The transcripts are in [this gist](https://gist.github.com/Gooder24/f2446d346e695aaa6b8d2a8436a0fbd3).
+
+- **The installer's questions:** not read. The installer has no screen reader: the ISO's boot menu lost Debian's
+  speech synthesis entry (#10), and the installed system has no console screen reader either (#7). None of the
+  seven questions (the machine's name; the user and password; the time zone; the Wi-Fi network and password; the
+  Tailscale auth key; where to install; the confirmation) nor their options and answer fields can be heard until
+  #10 is fixed; then this check is repeated in the VM with speech.
+- **`karchi-doctor`:** every line is read as it appears, status word first (`ok    no failed service`), and again
+  line by line in flat review. All lines were `ok` on this machine, so no `WARN` or `FAIL` line was heard.
+- **`fastfetch`:** the logo is read in front of each line of the summary (#11).
+- **README:** the layer diagram, drawn with box characters, and two blocks of commands with aligned descriptions
+  read badly; they are lists now (`3fd9d4d`).
+- **Not checked:** braille, NVDA or VoiceOver over SSH, and a voice's pronunciation of the symbols in code.
 
 ### Manual checks
 
