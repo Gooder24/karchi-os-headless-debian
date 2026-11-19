@@ -5,8 +5,8 @@ set -u
 failed=0
 
 # The budget of lightness: the first green run with the agent tools (9. 11. 2026) plus 15 %. Before them (15. 10.)
-# it was 266 packages, 696 MB and 258 MB: chromium and build-essential are most of the difference. The screen
-# reader tools (19. 11.) added 31 small packages and moved only that budget: 597 plus 15 %.
+# it was 266 packages, 696 MB and 258 MB: chromium and build-essential are most of the difference. With the
+# screen reader tools (19. 11.) the VM had 597 packages; only that budget moved, to 597 plus 15 %.
 MAX_PACKAGES=687   # 597
 MAX_DISK_MB=2085   # 1813
 MAX_MEMORY_MB=313  # 272
