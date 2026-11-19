@@ -4,7 +4,7 @@ set -euo pipefail
 [[ $EUID == 0 ]] || { echo 'Run with sudo.' >&2; exit 1; }
 here=$(dirname "$(realpath "$0")")
 for command in git gpg gpgv dpkg-scanpackages dpkg-deb bwrap busybox; do command -v "$command" >/dev/null; done
-busybox --list | grep -qx httpd
+busybox --list | grep -x httpd >/dev/null
 id karchi-apt >/dev/null 2>&1 || useradd --system --home-dir /var/lib/karchi-apt --shell /usr/sbin/nologin karchi-apt
 install -d -o karchi-apt -g karchi-apt -m750 /var/lib/karchi-apt /var/cache/karchi-apt
 install -d -o karchi-apt -g karchi-apt -m700 /var/lib/karchi-apt/gnupg
