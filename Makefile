@@ -10,6 +10,8 @@ check: parts ## static checks and self-tests on the host, also of the parts (sec
 	for f in iso/questions iso/late pkg/preinst pkg/postinst pkg/postrm; do sh -n $$f || exit 1; done
 	for f in tools/*.sh tests/*.sh pkg/root/usr/bin/karchi-doctor pkg/root/usr/lib/karchi/* pkg/root/etc/profile.d/*; do bash -n $$f || exit 1; done
 	python3 -c 'import ast, sys; [ast.parse(open(f).read(), f) for f in sys.argv[1:]]' tools/vm.py
+	python3 -m unittest discover -s tests -p 'test_apt_channel.py'
+	for f in tools/apt-channel/*.sh; do bash -n $$f || exit 1; done
 	bash pkg/root/usr/lib/karchi/post-install --self-test
 	sh pkg/root/usr/lib/karchi/agent-path-into-bashrc --self-test
 	sh iso/questions --self-test

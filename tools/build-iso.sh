@@ -31,17 +31,7 @@ debconf-set-selections --checkonly /repo/iso/preseed.cfg
 # --- our packages --------------------------------------------------------------------------------------------
 # karchi-headless: the files of pkg/root as they are, its dependencies are the system. Its parts laptop-server
 # and reboot-when-idle are projects of their own (parts/, git submodules), built by their own make deb.
-package=$work/karchi-headless
-mkdir -p "$package/DEBIAN"
-cp -a /repo/pkg/root/. "$package/"
-sed "s/@VERSION@/$version/" /repo/pkg/control > "$package/DEBIAN/control"
-install -m 755 /repo/pkg/preinst /repo/pkg/postinst /repo/pkg/postrm "$package/DEBIAN/"
-(cd "$package" && find etc -type f -printf '/%p\n' > DEBIAN/conffiles)
-dpkg-deb --root-owner-group --build "$package" "$pool/karchi-headless_${version}_all.deb" > /dev/null
-for part in /repo/parts/*/; do
-  [[ -e $part/Makefile ]] || { echo "${part%/} is empty: git submodule update --init" >&2; exit 1; }
-  make -s -C "$part" deb BUILD="$work/parts/$(basename "$part")" OUT="$pool" > /dev/null
-done
+/repo/tools/build-packages.sh "$work/packages" "$pool" "$version" > /dev/null
 index() { (cd "$pool" && apt-ftparchive packages . > Packages && apt-ftparchive release . > Release); }
 index
 

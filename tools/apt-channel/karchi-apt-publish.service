@@ -1,0 +1,18 @@
+[Unit]
+Description=Test and publish KarchiOS Headless main to the signed APT channel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=karchi-apt
+Group=karchi-apt
+Environment=HOME=/var/lib/karchi-apt
+ExecStart=/var/lib/karchi-apt/source/tools/apt-channel/update.sh
+SuccessExitStatus=75
+TimeoutStartSec=20min
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=100%
+MemoryHigh=384M
+MemoryMax=768M

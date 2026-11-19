@@ -199,6 +199,67 @@ After the restart the display goes dark. `SUPER + D` or `Ctrl + Alt + D` lights 
 
 Updates install themselves; `sudo apt update && sudo apt full-upgrade` does it at once.
 
+### KarchiOS package channel
+
+The three home servers (asus, dell and e540) use the signed APT archive at
+`http://100.110.180.15:8770/`, reachable only over Tailscale. Debian's existing daily
+`unattended-upgrades` installs `karchi-headless`, `laptop-server` and `reboot-when-idle` from it;
+the existing reboot policy stays with `reboot-when-idle`. A client needs no new daemon or timer.
+
+Asus checks `main` hourly between 08:00 and 22:00, with up to five minutes of jitter. It fast-forwards
+a dedicated checkout, initializes the exact committed submodules, runs `make check` and the documentation
+check, and builds packages in the existing unprivileged Debian sandbox. A failing check publishes nothing.
+The installer questions and boot menu still require the full ISO/VM gate before committing their changes.
+The channel does not run that expensive gate hourly and does not run agents.
+
+An archive key signs `InRelease`; clients trust it only for this source (`Signed-By`) and pin this origin
+to these three package names. HTTP runs as `www-data`, while the signing key is private to `karchi-apt`
+under `/var/lib/karchi-apt/gnupg`, outside `/srv/karchi-apt`. The server uses BusyBox httpd, bound to the
+Tailscale address, and no TLS terminator or database. The transport is encrypted by Tailscale; APT verifies
+the archive signature and package hashes. Release metadata expires after seven days and is refreshed daily.
+
+Channel versions use epoch 1 and the number/hash of the last relevant commit on main (for example
+`1:0.42+g0123456789ab`). This sorts above the old date and 0.x packages and increases without relying on
+the clock. A documentation-only change does not reinstall packages; a part change also updates the
+metapackage's exact dependency. Package files and old by-hash indices are retained so concurrent updates
+and explicit downgrades keep working. Repository publication is locked and commits `InRelease` last.
+
+Set up the publisher once on asus (requires git, make, Python 3, gnupg, gpgv, dpkg-dev, apt-utils,
+bubblewrap and BusyBox with httpd):
+
+```
+sudo tools/apt-channel/server.sh
+systemctl status karchi-apt-publish.timer karchi-apt-http.service
+journalctl -u karchi-apt-publish.service
+sudo systemctl start karchi-apt-publish.service
+```
+
+Enroll each client using the public key copied from asus over the existing SSH connection (not an
+unverified HTTP key download); the public key is `/srv/karchi-apt/archive-keyring.gpg` on asus:
+
+```
+sudo tools/apt-channel/client.sh enable http://100.110.180.15:8770 /path/to/archive-keyring.gpg
+sudo apt-get update
+sudo apt-get install karchi-headless
+apt-cache policy karchi-headless laptop-server reboot-when-idle
+sudo unattended-upgrade --dry-run --debug
+```
+
+Disable the channel without removing packages or changing Debian updates, or pause publishing on asus:
+
+```
+sudo tools/apt-channel/client.sh disable
+sudo apt-get update
+sudo systemctl disable --now karchi-apt-publish.timer
+```
+
+For rollback, first disable the client channel so automatic updates do not immediately undo the downgrade.
+Use `apt-cache madison` before disabling it to choose retained versions, download the three matching old
+packages with `apt-get download package=version`, then install those files with
+`sudo apt-get --allow-downgrades install ./karchi-headless_*.deb ./laptop-server_*.deb ./reboot-when-idle_*.deb`.
+The old metapackage pins the matching part versions. To resume, enroll the client again. The publisher
+checkout and keys persist across service/host restarts; stopping it leaves the last signed archive available.
+
 ## Build and test
 
 ```

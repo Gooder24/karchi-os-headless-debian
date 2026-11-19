@@ -1,0 +1,21 @@
+[Unit]
+Description=KarchiOS signed APT archive on Tailscale
+After=tailscaled.service network-online.target
+Wants=network-online.target
+
+[Service]
+User=www-data
+Group=www-data
+ExecStart=/usr/bin/busybox httpd -f -p 100.110.180.15:8770 -h /srv/karchi-apt
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
