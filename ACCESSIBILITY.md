@@ -208,7 +208,8 @@ The transcripts are in [this gist](https://gist.github.com/Gooder24/f2446d346e69
   Tailscale auth key; where to install; the confirmation) nor their options and answer fields can be heard until
   #10 is fixed; then this check is repeated in the VM with speech.
 - **`karchi-doctor`:** every line is read as it appears, status word first (`ok    no failed service`); when the
-  window scrolls, Orca reads a few lines twice. In flat review each line is read once, in order. All lines were `ok` on this machine, so no `WARN` or `FAIL` line was heard.
+  window scrolls, Orca reads a few lines twice. In flat review every line is read in order; the first
+  step up repeats the line it starts on. All lines were `ok` on this machine, so no `WARN` or `FAIL` line was heard.
 - **`fastfetch`:** the logo is read in front of each line of the summary (#11).
 - **README:** the layer diagram, drawn with box characters, and two blocks of commands with aligned descriptions
   read badly; they are lists now (`3fd9d4d`).
