@@ -5,8 +5,9 @@ set -u
 failed=0
 
 # The budget of lightness: the first green run with the agent tools (9. 11. 2026) plus 15 %. Before them (15. 10.)
-# it was 266 packages, 696 MB and 258 MB: chromium and build-essential are most of the difference.
-MAX_PACKAGES=566   # 492
+# it was 266 packages, 696 MB and 258 MB: chromium and build-essential are most of the difference. The screen
+# reader tools (19. 11.) added 31 small packages and moved only that budget: 597 plus 15 %.
+MAX_PACKAGES=687   # 597
 MAX_DISK_MB=2085   # 1813
 MAX_MEMORY_MB=313  # 272
 
@@ -128,7 +129,8 @@ battery_limit_ready() {  # the VM has no battery: the service ran and found noth
 agent_tools() {  # this script itself is a command over SSH: the shell agents on other machines reach this one with
   local tool missing=
   [[ :$PATH: == *":$HOME/.local/bin:"* ]] || { echo "PATH=$PATH"; return 1; }
-  for tool in git rg jq xxd file sqlite3 dig unzip zip rsync bc column tmux make gcc bwrap socat chromium; do
+  for tool in git rg jq xxd file sqlite3 dig unzip zip rsync bc column tmux make gcc bwrap socat chromium \
+      orca Xvfb xdotool speech-dispatcher lxterminal; do
     command -v "$tool" > /dev/null || missing="$missing $tool"
   done
   [[ -x /usr/sbin/smartctl ]] || missing="$missing smartctl"  # in sbin: agents run it with sudo
