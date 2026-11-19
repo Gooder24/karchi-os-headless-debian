@@ -141,11 +141,13 @@ class ChannelTests(unittest.TestCase):
             source = root / 'source'
             repository(source)
             (source / 'Makefile').write_text('check:\n\tfalse\n')
+            (source / 'pkg/control').write_text('a changed release payload\n')
             commit(source, 'a failing release')
             before = (dist / 'InRelease').read_bytes()
             with patch.object(channel, 'ROOT', source), patch.dict(os.environ, env):
-                with self.assertRaises(subprocess.CalledProcessError):
+                with self.assertRaises(subprocess.CalledProcessError) as failure:
                     channel.main()
+            self.assertEqual(tuple(failure.exception.cmd), ('make', 'check'))
             self.assertEqual((dist / 'InRelease').read_bytes(), before)
 
 
