@@ -6,12 +6,10 @@ itself, reboots only while no agent works, and tells you what is wrong. Nobody h
 
 It is Debian 13 plus three layers, each of which does one job and can be used on its own:
 
-```
-karchi-headless              this repository: the installer ISO, the network, Tailscale, the health check
- ├─ laptop-server            github.com/Gooder24/laptop-server       the laptop behaves like a server
- ├─ reboot-when-idle         github.com/Gooder24/reboot-when-idle    updates and reboots that wait for agents
- └─ Debian 13 (trixie)       base system, unattended-upgrades, iwd, systemd-networkd, Tailscale
-```
+- `karchi-headless`, this repository: the installer ISO, the network, Tailscale, the health check. It builds on:
+  - [`laptop-server`](https://github.com/Gooder24/laptop-server): the laptop behaves like a server;
+  - [`reboot-when-idle`](https://github.com/Gooder24/reboot-when-idle): updates and reboots that wait for agents;
+  - Debian 13 (trixie): the base system, `unattended-upgrades`, `iwd`, `systemd-networkd`, Tailscale.
 
 ## Requirements
 
@@ -142,6 +140,7 @@ each a little differently. So:
 | the tools agents reach for are installed: `rg`, `jq`, `xxd`, `file`, `sqlite3`, `dig`, `unzip`, `zip`, `rsync`, `bc`, `column`, `tmux`, `git`, a compiler, `python3 -m venv` | a turn does not stop at `command not found` and then install it, differently on every machine |
 | the first line of the user's `~/.bashrc` reads `/usr/lib/karchi/agent-path` | Tailscale SSH runs a command in a shell that never reads `~/.profile`, and the rest of `~/.bashrc` stops there; now `ssh box 'claude -p …'` finds what is in `~/.local/bin`, `~/.bun/bin`, `~/.cargo/bin`, `~/go/bin` and mise |
 | `chromium` and an emoji font | agents check web pages and UIs headless (`--screenshot`, Playwright with `/usr/bin/chromium`) without downloading a browser of their own |
+| Orca, `speech-dispatcher`, `xvfb`, `xdotool` and `lxterminal` | agents check how a README, a page or a command's output sounds with a screen reader: Orca runs in its own Xvfb, and `citacka` from karchi-skills writes down what it says |
 | `bubblewrap` and `socat` | what Claude Code's sandbox needs on Linux |
 | `/etc/claude-code/CLAUDE.md` | every Claude Code session on the machine reads what it is, which tools it has, and how to share it: look at the memory before a heavy job, `reboot-when-idle hold` for long ones, servers on 127.0.0.1 or Tailscale |
 | earlyoom with our rules (`earlyoom.service.d/10-karchi.conf`) | when memory runs out the largest browser, VM or compiler ends first; T3, the agents, SSH, Tailscale and databases are never chosen |
@@ -193,12 +192,10 @@ why.
 
 After the restart the display goes dark. `SUPER + D` or `Ctrl + Alt + D` lights it; the console shows a login prompt.
 
-```
-karchi-doctor                               what works and what is still to be done by hand
-sudo tailscale up --ssh                     if the installer got no auth key
-iwctl station wlan0 connect <network>       Wi-Fi afterwards
-reboot-when-idle status                     is a reboot due, and what would hold it back now
-```
+- `karchi-doctor`: what works and what is still to be done by hand.
+- `sudo tailscale up --ssh`: if the installer got no auth key.
+- `iwctl station wlan0 connect <network>`: Wi-Fi afterwards.
+- `reboot-when-idle status`: is a reboot due, and what would hold it back now.
 
 Updates install themselves; `sudo apt update && sudo apt full-upgrade` does it at once.
 
@@ -270,7 +267,8 @@ go into a layer QEMU throws away when it ends (`snapshot=on`): the ISO file does
 Measured on 9 November 2026: installation in 159 s, 492 packages, 1813 MB on disk, 272 MB of memory after the
 start, started in 4.8 s. Without the agent tools (15 October) it was 266 packages and 696 MB; chromium and
 build-essential are most of the difference. The limits in `tests/check-installed.sh` are the first green run
-with the agent tools plus 15 %.
+with the agent tools plus 15 %; the package limit is the run with the screen reader tools (19 November, 597
+packages) plus 15 %.
 
 The gate does not see the installer's dialogs. Those are checked by hand:
 
