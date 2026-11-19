@@ -82,7 +82,8 @@ The owner of accessibility for this repository is the repository owner, Gooder24
 ## Known limitations
 
 - **The installer's dialogs.** The test VM answers the installer's questions from the kernel command line, so it never
-  sees the dialogs. A manual keyboard run found Go Back barriers (#8, #9); #3 remains incomplete.
+  sees the dialogs. Go Back in our own questions now returns to the previous one and, from the first, to the
+  main menu (#8, #9, re-checked by hand on 19 November 2026); #3 remains incomplete.
   Screen reader output has not been checked (#4).
 - **The console display.** After the start the display is switched off. On the machine itself, `SUPER + D` or `Ctrl + Alt + D` lights it.
   Whether a screen reader user can work at the console in that state has not been tested. Tracked in #5.
@@ -171,6 +172,17 @@ claim keyboard coverage of those hidden paths or other disk layouts.
 Step 1 is incomplete: installation questions were exercised, but GRUB navigation was not captured.
 Step 2 failed: #8 and #9 prevent the required return paths; hostname Go Back and write-confirmation No are
 also unverified. #3 remains open. The installer was not changed in this audit.
+
+Re-check of Go Back after the fix of #8 and #9, 19 November 2026, same VM setup, ISO
+`karchios-headless-debian-2026.11.19-x86_64.iso` (SHA256 `b57eacb9c339c513fd985512fa1194a7c19279e0d7dc0cfbe3170a3c8ac85a09`),
+keyboard through `tools/vm.py` only. Time zone, Continue, then
+Wi-Fi network name (now shown) and Wi-Fi password. Go Back from the Wi-Fi password returned to the network name
+with its answer kept; Go Back from the Tailscale key returned to the Wi-Fi password; Go Back from "Where to
+install" returned to the Tailscale key. Go Back from each question in turn led back to the time zone and from it
+to the installer's main menu, with "Partition disks" selected and no error. Enter there asked our questions
+again with the earlier answers as defaults (a password field is always empty, as Debian's own are), and after
+them "Write the changes to disks?" listed only `vda`, the disk chosen. The No path of that confirmation and the
+GRUB menu remain unverified.
 
 Step 3 passed for keyboard operation in this VM: the first-boot display was dark; `SUPER + D` showed
 the login prompt and hid it again (124/125, 126/127); `Ctrl + Alt + D` did the same (129/130, 132/133).

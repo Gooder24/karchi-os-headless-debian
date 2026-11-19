@@ -25,6 +25,29 @@ free_gb() {
   echo $((best / 2097152))  # in units of 2^30 bytes, which Windows' Disk Management calls GB: the numbers match
 }
 
+# Our questions in order. Continue goes to the next one, Go Back to the one shown before it; a question that is
+# not shown (given on the kernel command line, below the debconf priority, Wi-Fi password without a network)
+# is passed in the direction of travel. Ends with 0 after the last question, with 1 on Go Back from the first.
+# $given lists the questions answered on the kernel command line; $choices are the disks, comma separated.
+ask_all() {
+  step=1 back=
+  while [ "$step" -ge 1 ] && [ "$step" -le 5 ]; do
+    q= priority=high
+    case $step in
+      1) q=karchi/timezone ;;
+      2) q=karchi/wifi-ssid ;;
+      3) db_get karchi/wifi-ssid; [ -n "$RET" ] && q=karchi/wifi-psk ;;
+      4) q=karchi/tailscale-key ;;
+      5) case $choices in *,*) q=karchi/disk priority=critical ;; esac ;;  # one disk: nothing to ask
+    esac
+    if [ -n "$q" ] && ! grep -qx "$q" "$given" && { db_fset "$q" seen false; db_input "$priority" "$q"; }; then
+      if db_go; then back=; else back=1; fi  # db_go fails only on Go Back
+    fi
+    if [ -n "$back" ]; then step=$((step - 1)); else step=$((step + 1)); fi
+  done
+  [ "$step" -gt 5 ]
+}
+
 if [ "$1" = --self-test ]; then  # two partitions, 95 GB free, a third partition, 36 GB free
   SYS=$(mktemp -d); mkdir -p "$SYS/block/x/x1" "$SYS/block/x/x2" "$SYS/block/x/x3" "$SYS/block/x/queue"
   echo 976562500 > "$SYS/block/x/size"
@@ -36,6 +59,27 @@ if [ "$1" = --self-test ]; then  # two partitions, 95 GB free, a third partition
   empty=$(free_gb /dev/y); rm -r "$SYS"
   [ "$got" = 95 ] || { echo "free_gb: $got instead of 95" >&2; exit 1; }
   [ "$empty" = 0 ] || { echo "free_gb of a disk without partitions: $empty instead of 0" >&2; exit 1; }
+  # Go Back through every question to the main menu, with and without a Wi-Fi network: $presses are the buttons
+  # pressed, in order, and the questions shown are compared.
+  db_fset() { :; }
+  db_get() { RET=$ssid; }
+  db_input() { shown="$shown ${2#karchi/}"; }
+  db_go() { set -- $presses; presses=${*#"$1"}; [ "$1" = next ]; }
+  navigate() {  # navigate <ssid> <choices> <presses> <given>: prints the questions shown, then "end" or "menu"
+    ssid=$1 choices=$2 presses=$3 shown=; echo "$4" > "$given"
+    if ask_all; then echo "$shown end"; else echo "$shown menu"; fi
+  }
+  given=$(mktemp)
+  got=$(navigate '' 'a, b' 'next next next back back back' '')
+  want=' timezone wifi-ssid tailscale-key disk tailscale-key wifi-ssid timezone menu'
+  [ "$got" = "$want" ] || { echo "Go Back without Wi-Fi:$got instead of$want" >&2; exit 1; }
+  got=$(navigate net 'a, b' 'next next back back next next next next next' '')
+  want=' timezone wifi-ssid wifi-psk wifi-ssid timezone wifi-ssid wifi-psk tailscale-key disk end'
+  [ "$got" = "$want" ] || { echo "Go Back with Wi-Fi:$got instead of$want" >&2; exit 1; }
+  got=$(navigate '' a back "$(printf 'karchi/timezone\nkarchi/wifi-ssid')")
+  want=' tailscale-key menu'
+  [ "$got" = "$want" ] || { echo "Go Back past given answers:$got instead of$want" >&2; exit 1; }
+  rm "$given"
   exit 0
 fi
 
@@ -43,16 +87,14 @@ fi
 db_x_loadtemplatefile /cdrom/karchi/templates karchi
 db_settitle karchi/title
 
-db_input high karchi/timezone || true
-db_input high karchi/wifi-ssid || true
-db_go || true
-db_get karchi/wifi-ssid
-if [ -n "$RET" ]; then
-  db_input high karchi/wifi-psk || true
-  db_go || true
+# What the kernel command line answered, as found the first time this runs: those are never asked. The rest are
+# asked each time, with the last answer as the default (this runs again after Go Back to the main menu).
+given=/var/lib/karchi-given
+if [ ! -e "$given" ]; then
+  for q in karchi/timezone karchi/wifi-ssid karchi/wifi-psk karchi/tailscale-key karchi/disk; do
+    db_fget "$q" seen && [ "$RET" = true ] && echo "$q"
+  done > "$given"
 fi
-db_input high karchi/tailscale-key || true
-db_go || true
 
 # Where to. The installer's own list offers the USB stick it was started from, and puts it first: under
 # Ventoy /cdrom is a device-mapper device on a partition of the stick, under a made-up name. Here the medium
@@ -60,13 +102,14 @@ db_go || true
 # free stretch of all disks is at least 10 GB and not on the medium: that stretch is the one the installer
 # then takes. With one choice there is nothing to ask; "write the changes to disks?" still comes.
 db_get partman-auto/disk
-if [ -z "$RET" ]; then
+disk_given=$RET
+choices=
+if [ -z "$disk_given" ]; then
   medium=
   while read -r _ _ number _ where _; do
     [ "$where" = /cdrom ] || continue
     medium="$(basename "$(readlink -f "/sys/dev/block/$number")") $(ls "/sys/dev/block/$number/slaves" 2> /dev/null)"
   done < /proc/self/mountinfo
-  choices=
   free=0
   free_on=
   for device in $(list-devices disk); do
@@ -83,17 +126,25 @@ if [ -z "$RET" ]; then
       ;;
   esac
   logger -t karchi "medium: $medium; to choose from: $choices"
+  db_subst karchi/disk CHOICES "$choices"
+fi
+
+if ! ask_all; then
+  # Go Back from the first question leads to the installer's main menu, as everywhere else in the installer. A
+  # failing command would only show an error; a display step of partman that ends with 255 is "back to the main
+  # menu". It removes itself and the mark that this command ran, so "Partition disks" brings the questions back.
+  printf '#!/bin/sh\nrm -f /var/lib/partman/early_command "$0"\nexit 255\n' > /lib/partman/display.d/00karchi-back
+  chmod +x /lib/partman/display.d/00karchi-back
+  logger -t karchi "Go Back from the first question: to the main menu"
+  db_settitle debian-installer/partman-base/title
+  exit 0
+fi
+
+if [ -z "$disk_given" ] && [ -n "$choices" ]; then  # no disk at all: the installer says that itself
   case $choices in
-    '') ;;  # no disk at all: the installer says that itself
-    *,*)
-      db_subst karchi/disk CHOICES "$choices"
-      until db_input critical karchi/disk; db_go && db_get karchi/disk && [ -n "$RET" ]; do
-        db_fset karchi/disk seen false  # "Go Back" has nowhere to go: ask again
-      done
-      ;;
-    *) RET=$choices ;;
+    *,*) db_get karchi/disk; where=$RET ;;
+    *) where=$choices ;;
   esac
-  where=$RET  # every debconf call overwrites RET
   logger -t karchi "chosen: $where"
   db_set partman-auto/disk "${where%% *}"
   case $where in
