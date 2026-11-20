@@ -207,7 +207,7 @@ The three home servers (asus, dell and e540) use the signed APT archive at
 the existing reboot policy stays with `reboot-when-idle`. A client needs no new daemon or timer.
 
 Asus checks `main` hourly between 08:00 and 22:00, with up to five minutes of jitter. It fast-forwards
-a dedicated checkout, initializes the exact committed submodules, runs `make check` and the documentation
+a dedicated checkout, initializes the exact committed submodules, runs `make check check-channel` and the documentation
 check, and builds packages in the existing unprivileged Debian sandbox. A failing check publishes nothing.
 The installer questions and boot menu still require the full ISO/VM gate before committing their changes.
 The channel does not run that expensive gate hourly and does not run agents.
@@ -218,11 +218,14 @@ under `/var/lib/karchi-apt/gnupg`, outside `/srv/karchi-apt`. The server uses Bu
 Tailscale address, and no TLS terminator or database. The transport is encrypted by Tailscale; APT verifies
 the archive signature and package hashes. Release metadata expires after seven days and is refreshed daily.
 
-Channel versions use epoch 1 and the number/hash of the last relevant commit on main (for example
+Channel versions use epoch 1 and the number/hash of the last relevant commit on main's first-parent history (for example
 `1:0.42+g0123456789ab`). This sorts above the old date and 0.x packages and increases without relying on
 the clock. A documentation-only change does not reinstall packages; a part change also updates the
 metapackage's exact dependency. Package files and old by-hash indices are retained so concurrent updates
 and explicit downgrades keep working. Repository publication is locked and commits `InRelease` last.
+Following the first parent makes a merge of an older side branch a new release instead of reusing the side
+branch's lower revision. The channel integration tests need Debian's APT/GPG tools; they are separate from
+the portable `make check`, so building the offline ISO on Arch still needs no host APT installation.
 
 Set up the publisher once on asus (requires git, make, Python 3, gnupg, gpgv, dpkg-dev, apt-utils,
 bubblewrap and BusyBox with httpd):
@@ -265,6 +268,7 @@ checkout and keys persist across service/host restarts; stopping it leaves the l
 ```
 git clone --recurse-submodules https://github.com/Gooder24/karchi-os-headless-debian
 make check      # static checks and self-tests, also of the parts; seconds
+make check-channel # APT channel integration tests on Debian (git, make, gnupg, gpgv, dpkg-dev); no root
 make iso        # the ISO into ~/.cache/karchi-os-headless-debian/out; the first run downloads about 0.9 GB
 make vm-test    # install without network into a fresh VM, two starts with a power cut between, checks
 ```

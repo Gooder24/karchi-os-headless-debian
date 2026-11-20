@@ -47,6 +47,28 @@ def package(web, work, version):
 
 
 class ChannelTests(unittest.TestCase):
+    def test_merge_that_takes_an_old_side_branch_payload_still_increases_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'source'
+            repository(root)
+            command('git', 'checkout', '-qb', 'feature', cwd=root)
+            (root / 'pkg/control').write_text('feature payload\n')
+            commit(root, 'feature change')
+            command('git', 'checkout', '-q', 'main', cwd=root)
+            for value in ('main change one\n', 'main change two\n'):
+                (root / 'pkg/control').write_text(value)
+                commit(root, value.strip())
+            before = channel.versions(root)
+            merge = subprocess.run(['git', 'merge', '--no-ff', '--no-edit', 'feature'], cwd=root,
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            self.assertEqual(merge.returncode, 1, merge.stdout)
+            command('git', 'checkout', 'feature', '--', 'pkg/control', cwd=root)
+            commit(root, 'take the feature payload at merge')
+            after = channel.versions(root)
+            command('dpkg', '--compare-versions', after['karchi-headless'], 'gt', before['karchi-headless'])
+            self.assertEqual(before['laptop-server'], after['laptop-server'])
+            self.assertEqual(before['reboot-when-idle'], after['reboot-when-idle'])
+
     def test_unpublished_commit_cannot_reach_the_publisher(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -172,7 +194,7 @@ class ChannelTests(unittest.TestCase):
             with patch.object(channel, 'ROOT', source), patch.dict(os.environ, env):
                 with self.assertRaises(subprocess.CalledProcessError) as failure:
                     channel.main()
-            self.assertEqual(tuple(failure.exception.cmd), ('make', 'check'))
+            self.assertEqual(tuple(failure.exception.cmd), ('make', 'check', 'check-channel'))
             self.assertEqual((dist / 'InRelease').read_bytes(), before)
 
 

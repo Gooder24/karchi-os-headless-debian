@@ -2,21 +2,23 @@
 CACHE := $(HOME)/.cache/karchi-os-headless-debian
 VM := python3 -B tools/vm.py
 
-.PHONY: help check parts iso vm-test usb clean
+.PHONY: help check check-channel parts iso vm-test usb clean
 help:
 	@grep -E '^[a-z0-9-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*## /\t/' | expand -t 12
 
 check: parts ## static checks and self-tests on the host, also of the parts (seconds)
 	for f in iso/questions iso/late pkg/preinst pkg/postinst pkg/postrm; do sh -n $$f || exit 1; done
 	for f in tools/*.sh tests/*.sh pkg/root/usr/bin/karchi-doctor pkg/root/usr/lib/karchi/* pkg/root/etc/profile.d/*; do bash -n $$f || exit 1; done
-	python3 -c 'import ast, sys; [ast.parse(open(f).read(), f) for f in sys.argv[1:]]' tools/vm.py
-	python3 -m unittest discover -s tests -p 'test_apt_channel.py'
+	python3 -c 'import ast, sys; [ast.parse(open(f).read(), f) for f in sys.argv[1:]]' tools/vm.py tools/apt-channel/publish.py tests/test_apt_channel.py
 	for f in tools/apt-channel/*.sh; do bash -n $$f || exit 1; done
 	bash pkg/root/usr/lib/karchi/post-install --self-test
 	sh pkg/root/usr/lib/karchi/agent-path-into-bashrc --self-test
 	sh iso/questions --self-test
 	@unreadable=$$(find pkg/root ! -type l ! -perm -o=r); test -z "$$unreadable" || { echo "installed as-is, so users could not read: $$unreadable"; exit 1; }
 	for part in parts/*/; do $(MAKE) --no-print-directory -C $$part check || exit 1; done
+
+check-channel: parts ## signed APT integration tests (Debian with git, make, gnupg, gpgv and dpkg-dev; no root)
+	python3 -m unittest discover -s tests -p 'test_apt_channel.py'
 
 parts: # laptop-server and reboot-when-idle are git submodules: fetched when missing
 	@test -e parts/laptop-server/Makefile -a -e parts/reboot-when-idle/Makefile || git submodule update --init

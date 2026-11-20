@@ -31,7 +31,7 @@ def versions(root):
         ('laptop-server', ['parts/laptop-server', 'tools/build-packages.sh']),
         ('reboot-when-idle', ['parts/reboot-when-idle', 'tools/build-packages.sh']),
     ):
-        commit = output('git', 'log', '-1', '--format=%H', '--', *paths, cwd=root)
+        commit = output('git', 'log', '--first-parent', '-1', '--format=%H', '--', *paths, cwd=root)
         count = output('git', 'rev-list', '--count', commit, cwd=root)
         # Epoch 1 makes the channel newer than the old date/0.x packages. Counts, unlike clocks, only grow.
         result[name] = f'1:0.{count}+g{commit[:12]}'
@@ -114,7 +114,7 @@ def main():
         run('dpkg', '--compare-versions', source_versions[name], 'ge', old)
     checked = state / 'checked-commit'
     if not checked.exists() or checked.read_text().strip() != head:
-        run('make', 'check', cwd=ROOT)
+        run('make', 'check', 'check-channel', cwd=ROOT)
         run('python3', '.github/scripts/check-docs.py', cwd=ROOT)
     required = {name: f'{name}_{source_versions[name]}_all.deb' for name in PACKAGES}
     if any(not (web / 'pool' / filename).exists() for filename in required.values()):
