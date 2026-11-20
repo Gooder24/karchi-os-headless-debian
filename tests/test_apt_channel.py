@@ -47,6 +47,31 @@ def package(web, work, version):
 
 
 class ChannelTests(unittest.TestCase):
+    def test_unpublished_commit_cannot_reach_the_publisher(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            remote, state = root / 'remote', root / 'state'
+            repository(remote)
+            publisher = remote / 'tools/apt-channel/publish.py'
+            publisher.parent.mkdir(parents=True)
+            marker = root / 'published'
+            publisher.write_text(f'from pathlib import Path\nPath({str(marker)!r}).touch()\n')
+            commit(remote, 'publisher')
+            state.mkdir()
+            source = state / 'source'
+            command('git', 'clone', '-q', str(remote), str(source))
+            command('git', 'config', 'user.name', 'Local test', cwd=source)
+            command('git', 'config', 'user.email', 'test@localhost', cwd=source)
+            (source / 'pkg/control').write_text('an unpublished change\n')
+            commit(source, 'not on origin/main')
+            config = root / 'config'
+            config.write_text(f'KARCHI_APT_STATE={state}\n')
+            result = subprocess.run(['bash', str(ROOT / 'tools/apt-channel/update.sh')],
+                env=dict(os.environ, KARCHI_APT_CONFIG=str(config)), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn('Refusing unpublished local commits', result.stdout)
+            self.assertFalse(marker.exists())
+
     def test_only_payload_changes_bump_versions_and_parts_are_pinned(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / 'source'

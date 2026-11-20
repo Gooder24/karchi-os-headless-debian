@@ -9,5 +9,6 @@ cd "$KARCHI_APT_STATE/source"
 [[ -z $(git status --porcelain --untracked-files=normal) ]] || { echo 'Publisher checkout is dirty' >&2; exit 1; }
 git fetch origin main
 git merge --ff-only origin/main
+[[ $(git rev-parse HEAD) == "$(git rev-parse origin/main)" ]] || { echo 'Refusing unpublished local commits' >&2; exit 1; }
 git submodule update --init --recursive
 exec python3 tools/apt-channel/publish.py
